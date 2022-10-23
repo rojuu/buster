@@ -14,7 +14,7 @@ public:
 	int run()
 	{
 		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
-			LOG(FATAL, "Unable to initialize SDL: {}", SDL_GetError());
+			LOG_CRITICAL("Unable to initialize SDL: {}", SDL_GetError());
 			return EXIT_FAILURE;
 		}
 		auto sdl_guard = ScopeGuard([] {
@@ -27,12 +27,12 @@ public:
 			1024, 768,
 			SDL_WINDOW_RESIZABLE);
 		if (!m_window) {
-			LOG(FATAL, "Unable to create SDL_Window: {}", SDL_GetError());
+			LOG_CRITICAL("Unable to create SDL_Window: {}", SDL_GetError());
 			return EXIT_FAILURE;
 		}
 		auto window_guard = ScopeGuard([this] {
 			SDL_DestroyWindow(m_window);
-			});
+		});
 
 		//bgfx::renderFrame(); // Call before init to force rendering from same thread
 		bgfx::Init init;

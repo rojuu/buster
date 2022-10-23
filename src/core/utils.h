@@ -6,24 +6,6 @@
 
 #include <algorithm>
 
-
-#if 0
-enum LogVerbosity
-{
-    Log_ASSERT,
-    Log_FATAL,
-    Log_ERROR,
-    Log_WARNING,
-    Log_INFO,
-    Log_DEBUG,
-    Log_VERBOSE,
-};
-
-#define LOG(verbosity, msg)       do { (void)(Log_ ## verbosity); printf("[ "#verbosity " ] %s\n", msg);             } while(0)
-#define LOGF(verbosity, fmt, ...) do { (void)(Log_ ## verbosity); printf("[ "#verbosity " ] " fmt "\n", __VA_ARGS__);} while(0)
-#endif
-#define LOG(...) (void)0
-
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
 #define DEBUG_TRAP() __asm int 3; /* Trap to debugger! */
@@ -34,11 +16,20 @@ enum LogVerbosity
 #define DEBUG_TRAP() __builtin_trap()
 #endif
 
+#include <spdlog/spdlog.h>
+
+#define LOG_TRACE(...) SPDLOG_TRACE(__VA_ARGS__)
+#define LOG_DEBUG(...) SPDLOG_DEBUG(__VA_ARGS__)
+#define LOG_INFO(...) SPDLOG_INFO(__VA_ARGS__)
+#define LOG_WARN(...) SPDLOG_WARN(__VA_ARGS__)
+#define LOG_ERROR(...) SPDLOG_ERROR(__VA_ARGS__)
+#define LOG_CRITICAL(...) SPDLOG_CRITICAL(__VA_ARGS__)
+
 // Stop in debugger if condition is false, and log a message
-#define ASSERT(cond, msg)  do { if (!(cond)) { LOG(ASSERT, msg); DEBUG_TRAP(); } } while(0)
+#define ASSERT(cond, msg)  do { if (!(cond)) { LOG_DEBUG("{}", msg); DEBUG_TRAP(); } } while(0)
 
 // Add this to any codebranch that shuold never be reached. Atm it causes a debug trap, but maybe should also call abort or throw exception?
-#define ASSERT_UNREACHED() do { LOG(ASSERT, "Unreached code path!"); DEBUG_TRAP(); } while(0)
+#define ASSERT_UNREACHED() do { LOG_DEBUG("{}", "Unreached code path!"); DEBUG_TRAP(); } while(0)
 
 // Literally does the same thing as assert, but semantically should be used when the developer does not check some
 // potential error case at this time, but wants to make it easily searchable. Later on we can search for "UNCHECKED"
