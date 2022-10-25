@@ -1,11 +1,13 @@
 add_library(core STATIC
     "def.h"
+    "IPlatform.h"
     "scopeguard.h"
+    "simd.h"
     "utils.h"
     "utils.cpp"
 )
 
-target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
 
 target_link_libraries(core PUBLIC
     spdlog::spdlog)

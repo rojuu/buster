@@ -1,10 +1,6 @@
 #pragma once
 
 #include "def.h"
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <algorithm>
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -24,6 +20,8 @@
 #define LOG_WARN(...) SPDLOG_WARN(__VA_ARGS__)
 #define LOG_ERROR(...) SPDLOG_ERROR(__VA_ARGS__)
 #define LOG_CRITICAL(...) SPDLOG_CRITICAL(__VA_ARGS__)
+
+void logger_init();
 
 // Stop in debugger if condition is false, and log a message
 #define ASSERT(cond, msg)  do { if (!(cond)) { LOG_DEBUG("{}", msg); DEBUG_TRAP(); } } while(0)
@@ -67,4 +65,3 @@ template<class T>
 inline void zero_struct(T* s) {
     memset(s, 0, sizeof(*s));
 }
-

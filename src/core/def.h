@@ -15,8 +15,8 @@
 // to find all the places in the codebase where some return value was not checked properly
 #define UNCHECKED(arg) (void)arg
 
-#include <stdint.h>
-#include <stddef.h>
+#include <cstdint>
+#include <cstddef>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -45,17 +45,9 @@ typedef uintptr_t uptr;
 typedef intptr_t sptr;
 typedef uptr usz;
 
-#define MAX_ALIGN (sizeof(uptr))
-
 static_assert(sizeof(uptr) == sizeof(sptr), "size mismatch");
 static_assert(sizeof(uptr) == sizeof(void*), "size mismatch");
 static_assert(sizeof(usz) == sizeof(uptr), "size mismatch");
-
-// simd stuffs
-#include <emmintrin.h>
-#include <immintrin.h>
-#include <xmmintrin.h>
-#include <pmmintrin.h>
 
 static constexpr auto KiB = 1024ull; // Kibibyte
 static constexpr auto MiB = 1024ull * KiB; // Mebibyte

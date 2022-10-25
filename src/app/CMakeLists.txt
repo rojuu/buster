@@ -3,11 +3,9 @@ add_executable(app
 
 target_link_libraries(app PRIVATE
     core
+    renderer
     SDL2::SDL2
     SDL2::SDL2main
-    bx
-    bimg
-    bgfx
 )
 
 target_include_directories(app PRIVATE $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>)
