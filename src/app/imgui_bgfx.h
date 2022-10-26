@@ -4,8 +4,6 @@
 
 #include "imgui.h"
 
-#include "renderer.h"
-
 #define IMGUI_MBUT_LEFT   0x01
 #define IMGUI_MBUT_RIGHT  0x02
 #define IMGUI_MBUT_MIDDLE 0x04
@@ -22,7 +20,7 @@ inline uint32_t imguiRGBA(uint8_t _r, uint8_t _g, uint8_t _b, uint8_t _a = 255)
 
 namespace bx { struct AllocatorI; }
 
-void imguiCreate(float _fontSize = 18.0f, bx::AllocatorI* _allocator = NULL);
+void imguiCreate(bgfx::ViewId _imguiViewId, float _fontSize = 18.0f);
 void imguiDestroy();
 
 void imguiBeginFrame(bgfx::ViewId _view);

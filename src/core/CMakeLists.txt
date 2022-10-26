@@ -1,11 +1,15 @@
 add_library(core STATIC
-    "def.h"
-    "IPlatform.h"
-    "scopeguard.h"
+    "containers/common.h"
+    "containers/hashmap.h" 
+    "containers/pair.h"
+    "containers/vector.h" 
+
+    "def.h"   
+    
     "simd.h"
     "utils.h"
     "utils.cpp"
-)
+  "typetraits.h")
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
 

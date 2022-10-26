@@ -154,17 +154,12 @@ struct OcornutImguiContext
 		}
 	}
 
-	void create(float _fontSize, bx::AllocatorI* _allocator)
+	void create(bgfx::ViewId _viewId, float _fontSize)
 	{
-		m_allocator = _allocator;
+		static bx::DefaultAllocator allocator;
+		m_allocator = &allocator;
 
-		if (NULL == _allocator)
-		{
-			static bx::DefaultAllocator allocator;
-			m_allocator = &allocator;
-		}
-
-		m_viewId = 255;
+		m_viewId = _viewId;
 		m_lastScroll = 0;
 		m_last = bx::getHPCounter();
 
@@ -260,8 +255,7 @@ struct OcornutImguiContext
 
 	void endFrame()
 	{
-		ImGui::Render();
-		render(ImGui::GetDrawData() );
+		render(ImGui::GetDrawData());
 	}
 
 	ImGuiContext*       m_imgui;
@@ -291,9 +285,9 @@ static void memFree(void* _ptr, void* _userData)
 	BX_FREE(s_ctx.m_allocator, _ptr);
 }
 
-void imguiCreate(float _fontSize, bx::AllocatorI* _allocator)
+void imguiCreate(bgfx::ViewId _imguiViewId, float _fontSize)
 {
-	s_ctx.create(_fontSize, _allocator);
+	s_ctx.create(_imguiViewId, _fontSize);
 }
 
 void imguiDestroy()

@@ -1,6 +1,11 @@
 #pragma once
 
 #include "def.h"
+#include "typetraits.h"
+
+#include <limits>
+#include <spdlog/spdlog.h>
+
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -11,8 +16,6 @@
 #else
 #define DEBUG_TRAP() __builtin_trap()
 #endif
-
-#include <spdlog/spdlog.h>
 
 #define LOG_TRACE(...) SPDLOG_TRACE(__VA_ARGS__)
 #define LOG_DEBUG(...) SPDLOG_DEBUG(__VA_ARGS__)
@@ -61,7 +64,51 @@ inline uptr align_backwards(uptr value, usz alignment)
     return result;
 }
 
+
+
+template<class T>
+using numeric_limits = std::numeric_limits<T>;
+
+
 template<class T>
 inline void zero_struct(T* s) {
     memset(s, 0, sizeof(*s));
 }
+
+template<class T>
+constexpr remove_reference_t<T>&& move(T&& t) noexcept
+{
+    return static_cast<typename remove_reference<T>::type&&>(t);
+}
+
+template<class T>
+constexpr T&& forward(remove_reference_t<T>& t) noexcept
+{
+    return static_cast<T&&>(t);
+}
+
+template<class T>
+constexpr T&& forward(remove_reference_t<T>&& t) noexcept
+{
+    return static_cast<T&&>(t);
+}
+
+
+template<class F>
+class ScopeGuard {
+    F func;
+public:
+    ScopeGuard(F&& f)
+        : func(forward<F&&>(f))
+    {
+    }
+    ~ScopeGuard()
+    {
+        func();
+    }
+};
+
+template<class F>
+ScopeGuard(F&&)->ScopeGuard<F>;
+
+

@@ -1,14 +1,22 @@
 add_executable(app
-    "main.cpp")
+    "imgui_bgfx.cpp"
+    "imgui_bgfx.h"
+    "main.cpp"
+)
 
 target_link_libraries(app PRIVATE
     core
-    renderer
+    bx
+    bimg
+    bgfx
+    dear_imgui
     SDL2::SDL2
     SDL2::SDL2main
 )
 
-target_include_directories(app PRIVATE $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>)
+target_include_directories(app
+    PRIVATE $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>
+    ${CMAKE_SOURCE_DIR}/thirdparty/imgui)
 
 target_compile_options(app
     PRIVATE
