@@ -3,4 +3,4 @@
 #include <vector>
 
 template<class T>
-using vector = std::vector<T>;
+using Vector = std::vector<T>;

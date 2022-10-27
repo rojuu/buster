@@ -2,14 +2,15 @@ add_library(core STATIC
     "containers/common.h"
     "containers/hashmap.h" 
     "containers/pair.h"
+    "containers/string.h"
     "containers/vector.h" 
 
     "def.h"   
-    
     "simd.h"
+    "typetraits.h"
     "utils.h"
     "utils.cpp"
-  "typetraits.h")
+)
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
 

@@ -171,7 +171,6 @@ struct OcornutImguiContext
 
 		io.DisplaySize = ImVec2(1280.0f, 720.0f);
 		io.DeltaTime   = 1.0f / 60.0f;
-		io.IniFilename = NULL;
 
 		setupStyle(true);
 

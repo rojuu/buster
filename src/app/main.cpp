@@ -5,10 +5,127 @@
 #include "SDL.h"
 #include "SDL_syswm.h"
 
+#include <bx/bx.h>
+#include <bx/math.h>
 #include <bgfx/bgfx.h>
 
 #include "imgui.h"
 #include "imgui_bgfx.h"
+
+
+struct PosColorVertex
+{
+	float m_x;
+	float m_y;
+	float m_z;
+	uint32_t m_abgr;
+
+	static void init()
+	{
+		ms_layout
+			.begin()
+			.add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+			.end();
+	};
+
+	static bgfx::VertexLayout ms_layout;
+};
+
+bgfx::VertexLayout PosColorVertex::ms_layout;
+
+static PosColorVertex s_cubeVertices[] =
+{
+	{-1.0f,  1.0f,  1.0f, 0xff000000 },
+	{ 1.0f,  1.0f,  1.0f, 0xff0000ff },
+	{-1.0f, -1.0f,  1.0f, 0xff00ff00 },
+	{ 1.0f, -1.0f,  1.0f, 0xff00ffff },
+	{-1.0f,  1.0f, -1.0f, 0xffff0000 },
+	{ 1.0f,  1.0f, -1.0f, 0xffff00ff },
+	{-1.0f, -1.0f, -1.0f, 0xffffff00 },
+	{ 1.0f, -1.0f, -1.0f, 0xffffffff },
+};
+
+static const uint16_t s_cubeTriList[] =
+{
+	0, 1, 2, // 0
+	1, 3, 2,
+	4, 6, 5, // 2
+	5, 6, 7,
+	0, 2, 4, // 4
+	4, 2, 6,
+	1, 5, 3, // 6
+	5, 7, 3,
+	0, 4, 1, // 8
+	4, 5, 1,
+	2, 3, 6, // 10
+	6, 3, 7,
+};
+
+static const uint16_t s_cubeTriStrip[] =
+{
+	0, 1, 2,
+	3,
+	7,
+	1,
+	5,
+	0,
+	4,
+	2,
+	6,
+	7,
+	4,
+	5,
+};
+
+static const uint16_t s_cubeLineList[] =
+{
+	0, 1,
+	0, 2,
+	0, 4,
+	1, 3,
+	1, 5,
+	2, 3,
+	2, 6,
+	3, 7,
+	4, 5,
+	4, 6,
+	5, 7,
+	6, 7,
+};
+
+static const uint16_t s_cubeLineStrip[] =
+{
+	0, 2, 3, 1, 5, 7, 6, 4,
+	0, 2, 6, 4, 5, 7, 3, 1,
+	0,
+};
+
+static const uint16_t s_cubePoints[] =
+{
+	0, 1, 2, 3, 4, 5, 6, 7
+};
+
+static const char* s_ptNames[]
+{
+	"Triangle List",
+	"Triangle Strip",
+	"Lines",
+	"Line Strip",
+	"Points",
+};
+
+static const uint64_t s_ptState[]
+{
+	UINT64_C(0),
+	BGFX_STATE_PT_TRISTRIP,
+	BGFX_STATE_PT_LINES,
+	BGFX_STATE_PT_LINESTRIP,
+	BGFX_STATE_PT_POINTS,
+};
+static_assert(ARRAY_COUNT(s_ptState) == ARRAY_COUNT(s_ptNames));
+
+
 
 
 ImGuiKey sdlk_to_imgui(SDL_Keycode keycode);
@@ -30,7 +147,7 @@ public:
 		m_window = SDL_CreateWindow(
 			"A window title",
 			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-			1024, 768,
+			1600, 900,
 			SDL_WINDOW_RESIZABLE);
 		if (!m_window) {
 			LOG_CRITICAL("Unable to create SDL_Window: {}", SDL_GetError());
@@ -69,8 +186,13 @@ public:
 			return EXIT_FAILURE;
 		}
 
-		bgfx::setViewClear(s_clear_view, BGFX_CLEAR_COLOR);
-		bgfx::setViewRect(s_clear_view, 0, 0, bgfx::BackbufferRatio::Equal);
+
+		bgfx::setViewClear(s_clear_view, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH);
+		for (bgfx::ViewId id = 0; id < s_view_count; ++id) {
+			bgfx::setViewRect(id, 0, 0, bgfx::BackbufferRatio::Equal);
+		}
+
+		bool use_imgui = false;
 
 		imguiCreate(s_imgui_view);
 
@@ -79,20 +201,26 @@ public:
 			bgfx::shutdown();
 		});
 
+		create_cube_stuff();
+		auto cube_guard = ScopeGuard([this] {
+			destroy_cube_stuff();
+		});
 
-		bool show_stats = false;
+		ImGuiIO& io = ImGui::GetIO();
+
+		//io.IniFilename = NULL;
+
+		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+		io.ConfigFlags |= 0
+			//| ImGuiConfigFlags_NavEnableGamepad
+			| ImGuiConfigFlags_NavEnableKeyboard
+			;
+		bool show_stats = true;
 
 		bool quit = false;
 		for (;;)
 		{
-			ImGuiIO& io = ImGui::GetIO();
-
-			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-			io.ConfigFlags |= 0
-				//| ImGuiConfigFlags_NavEnableGamepad
-				| ImGuiConfigFlags_NavEnableKeyboard
-				;
 
 			float scrollX = 0;
 			float scrollY = 0;
@@ -149,7 +277,8 @@ public:
 				}
 			}
 			if (quit) break;
-
+			
+			if (use_imgui) imguiBeginFrame(s_imgui_view);
 
 			auto [window_width, window_height] = get_window_size();
 			io.DisplaySize = ImVec2((float)window_width, (float)window_height);
@@ -195,38 +324,23 @@ public:
 			}
 			ImGui::EndMainMenuBar();
 
-
-
 			bgfx::dbgTextClear();
 			if (window_width != m_old_window_width || window_height != m_old_window_height) {
 				bgfx::reset((u32)window_width, (u32)window_height, BGFX_RESET_NONE);
-				bgfx::setViewRect(s_clear_view, 0, 0, bgfx::BackbufferRatio::Equal);
+
+				for (bgfx::ViewId id = 0; id < s_view_count; ++id) {
+					bgfx::setViewRect(id, 0, 0, bgfx::BackbufferRatio::Equal);
+				}
 			}
 
 			m_old_window_width = window_width;
 			m_old_window_height = window_height;
 
 			bgfx::touch(s_clear_view);
-			imguiBeginFrame(s_imgui_view);
 
-#if 0
-#if IS_INTERNAL_BUILD
-			const char* internal_build = "YES";
-#elif IS_INTERNAL_BUILD == 0
-			const char* internal_build = "NO";
-#else
-			const char* internal_build = "UNKNOWN";
-#endif
-#if IS_DEBUG_BUILD
-			const char* build_type = "DEBUG";
-#elif IS_RELEASE_BUILD
-			const char* build_type = "RELEASE";
-#else
-			const char* build_type = "UNKNOWN";
-#endif
-			bgfx::dbgTextPrintf(0, 1, 0x0f, "BUILD_TYPE: %s, IS_INTERNAL: %s, Press F1 to show rendering stats", build_type, internal_build);
-			bgfx::setDebug(show_stats ? BGFX_DEBUG_STATS : BGFX_DEBUG_TEXT);
-#endif
+			render_cube_stuff();
+
+			bgfx::setDebug(show_stats ? BGFX_DEBUG_STATS : 0);
 
 			if (ImGui::Begin("Game")) {
 				if (ImGui::Button("Win the game")) {
@@ -240,18 +354,207 @@ public:
 
 			ImGui::Render();
 
-			imguiEndFrame();
+			if (use_imgui) imguiEndFrame();
 			bgfx::frame();
 		}
 
 		return EXIT_SUCCESS;
 	}
 
-	pair<int, int> get_window_size()
+	Pair<int, int> get_window_size()
 	{
-		pair<int, int> size{};
+		Pair<int, int> size{};
 		SDL_GetWindowSize(m_window, &size.first, &size.second);
 		return size;
+	}
+
+	void destroy_cube_stuff()
+	{
+		// Cleanup.
+		for (uint32_t ii = 0; ii < ARRAY_COUNT(m_ibh); ++ii)
+		{
+			bgfx::destroy(m_ibh[ii]);
+		}
+		bgfx::destroy(m_vbh);
+		bgfx::destroy(m_program);
+	}
+
+	void render_cube_stuff()
+	{
+		auto [width, height] = get_window_size();
+
+
+		ImGui::SetNextWindowPos(
+			ImVec2(width - width / 5.0f - 10.0f, 10.0f)
+			, ImGuiCond_FirstUseEver
+		);
+		ImGui::SetNextWindowSize(
+			ImVec2(width / 5.0f, height / 3.5f)
+			, ImGuiCond_FirstUseEver
+		);
+		ImGui::Begin("Settings"
+			, NULL
+			, 0
+		);
+
+		ImGui::Checkbox("Write R", &m_r);
+		ImGui::Checkbox("Write G", &m_g);
+		ImGui::Checkbox("Write B", &m_b);
+		ImGui::Checkbox("Write A", &m_a);
+
+		ImGui::Text("Primitive topology:");
+		ImGui::Combo("##topology", (int*)&m_pt, s_ptNames, BX_COUNTOF(s_ptNames));
+
+
+		const bx::Vec3 at = { 0.0f, 0.0f,   0.0f };
+		const bx::Vec3 eye = { 0.0f, 0.0f, -35.0f };
+
+		float time = (float)((SDL_GetPerformanceCounter() - m_timeOffset) / double(SDL_GetPerformanceFrequency()));
+
+		// Set view and projection matrix for view 0.
+		{
+			float view[16];
+			bx::mtxLookAt(view, eye, at);
+
+			float proj[16];
+			bx::mtxProj(proj, 60.0f, float(width) / float(height), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
+			bgfx::setViewTransform(s_cube_view, view, proj);
+
+			bgfx::setViewRect(s_cube_view, 0, 0, uint16_t(width), uint16_t(height));
+		}
+
+
+		bgfx::IndexBufferHandle ibh = m_ibh[m_pt];
+		uint64_t state = 0
+			| (m_r ? BGFX_STATE_WRITE_R : 0)
+			| (m_g ? BGFX_STATE_WRITE_G : 0)
+			| (m_b ? BGFX_STATE_WRITE_B : 0)
+			| (m_a ? BGFX_STATE_WRITE_A : 0)
+			| BGFX_STATE_WRITE_Z
+			| BGFX_STATE_DEPTH_TEST_LESS
+			| BGFX_STATE_CULL_CW
+			| BGFX_STATE_MSAA
+			| s_ptState[m_pt]
+			;
+
+		// Submit 11x11 cubes.
+		for (uint32_t yy = 0; yy < 11; ++yy)
+		{
+			for (uint32_t xx = 0; xx < 11; ++xx)
+			{
+				float mtx[16];
+				bx::mtxRotateXY(mtx, time + xx * 0.21f, time + yy * 0.37f);
+				mtx[12] = -15.0f + float(xx) * 3.0f;
+				mtx[13] = -15.0f + float(yy) * 3.0f;
+				mtx[14] = 0.0f;
+
+				// Set model matrix for rendering.
+				bgfx::setTransform(mtx);
+
+				// Set vertex and index buffer.
+				bgfx::setVertexBuffer(0, m_vbh);
+				bgfx::setIndexBuffer(ibh);
+
+				// Set render states.
+				bgfx::setState(state);
+
+				bgfx::submit(s_cube_view, m_program);
+			}
+		}
+
+		ImGui::End();
+	}
+
+	void create_cube_stuff()
+	{
+		// Create vertex stream declaration.
+		PosColorVertex::init();
+
+		m_timeOffset = SDL_GetPerformanceCounter();
+
+		// Create static vertex buffer.
+		m_vbh = bgfx::createVertexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubeVertices, sizeof(s_cubeVertices))
+			, PosColorVertex::ms_layout
+		);
+
+		// Create static index buffer for triangle list rendering.
+		m_ibh[0] = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubeTriList, sizeof(s_cubeTriList))
+		);
+
+		// Create static index buffer for triangle strip rendering.
+		m_ibh[1] = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubeTriStrip, sizeof(s_cubeTriStrip))
+		);
+
+		// Create static index buffer for line list rendering.
+		m_ibh[2] = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubeLineList, sizeof(s_cubeLineList))
+		);
+
+		// Create static index buffer for line strip rendering.
+		m_ibh[3] = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubeLineStrip, sizeof(s_cubeLineStrip))
+		);
+
+		// Create static index buffer for point list rendering.
+		m_ibh[4] = bgfx::createIndexBuffer(
+			// Static data can be passed with bgfx::makeRef
+			bgfx::makeRef(s_cubePoints, sizeof(s_cubePoints))
+		);
+
+		// Create program from shaders.
+		m_program = load_program("vs_cubes", "fs_cubes");
+	}
+
+	static bgfx::ShaderHandle load_shader(const char* name)
+	{
+		const char* shaderpath = "???";
+
+		switch (bgfx::getRendererType())
+		{
+		case bgfx::RendererType::Noop:
+		case bgfx::RendererType::Direct3D9:  shaderpath = "app/shaders/dx9/";   break;
+		case bgfx::RendererType::Direct3D11:
+		case bgfx::RendererType::Direct3D12: shaderpath = "app/shaders/dx11/";  break;
+		case bgfx::RendererType::Agc:
+		case bgfx::RendererType::Gnm:        shaderpath = "app/shaders/pssl/";  break;
+		case bgfx::RendererType::Metal:      shaderpath = "app/shaders/metal/"; break;
+		case bgfx::RendererType::Nvn:        shaderpath = "app/shaders/nvn/";   break;
+		case bgfx::RendererType::OpenGL:     shaderpath = "app/shaders/glsl/";  break;
+		case bgfx::RendererType::OpenGLES:   shaderpath = "app/shaders/essl/";  break;
+		case bgfx::RendererType::Vulkan:     shaderpath = "app/shaders/spirv/"; break;
+		case bgfx::RendererType::WebGPU:     shaderpath = "app/shaders/spirv/"; break;
+
+		case bgfx::RendererType::Count:
+			ASSERT(false, "You should not be here!");
+			break;
+		}
+
+		String filepath = String(shaderpath) + String(name) + String(".bin");
+		auto filedata = read_entire_file_as_bytes(filepath.c_str());
+		bgfx::ShaderHandle handle = bgfx::createShader(bgfx::copy(filedata.data(), (u32)filedata.size()));
+		bgfx::setName(handle, name);
+
+		return handle;
+	}
+
+	bgfx::ProgramHandle load_program(const char* vs_name, const char* fs_name)
+	{
+		bgfx::ShaderHandle vsh = load_shader(vs_name);
+		bgfx::ShaderHandle fsh = BGFX_INVALID_HANDLE;
+		if (NULL != fs_name)
+		{
+			fsh = load_shader(fs_name);
+		}
+
+		return bgfx::createProgram(vsh, fsh, true /* destroy shaders when program is destroyed */);
 	}
 
 	void* get_native_window_handle() { return m_wm_info.info.win.window; }
@@ -262,7 +565,21 @@ private:
 	{
 		s_clear_view,
 		s_imgui_view,
+		s_cube_view,
+		s_view_count,
 	};
+
+
+	bgfx::VertexBufferHandle m_vbh;
+	bgfx::IndexBufferHandle m_ibh[ARRAY_COUNT(s_ptState)];
+	bgfx::ProgramHandle m_program;
+	s32 m_pt = 0;
+	u64 m_timeOffset;
+	bool m_r =false;
+	bool m_g = false;
+	bool m_b = false;
+	bool m_a = false;
+
 
 	u64 m_last_time{ 0 };
 
@@ -282,7 +599,7 @@ int main(int argc, char **argv)
 
 ImGuiKey sdlk_to_imgui(SDL_Keycode keycode)
 {
-	static hash_map<SDL_Keycode, ImGuiKey> map{
+	static HashMap<SDL_Keycode, ImGuiKey> map{
 		{ SDLK_TAB, ImGuiKey_Tab },
 		{ SDLK_LEFT, ImGuiKey_LeftArrow },
 		{ SDLK_RIGHT, ImGuiKey_RightArrow },

@@ -2,6 +2,7 @@
 
 #include "def.h"
 #include "typetraits.h"
+#include "containers/vector.h"
 
 #include <limits>
 #include <spdlog/spdlog.h>
@@ -64,8 +65,6 @@ inline uptr align_backwards(uptr value, usz alignment)
     return result;
 }
 
-
-
 template<class T>
 using numeric_limits = std::numeric_limits<T>;
 
@@ -111,4 +110,4 @@ public:
 template<class F>
 ScopeGuard(F&&)->ScopeGuard<F>;
 
-
+Vector<u8> read_entire_file_as_bytes(const char* filename);

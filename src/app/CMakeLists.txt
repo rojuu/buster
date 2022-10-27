@@ -1,8 +1,13 @@
+include(${CMAKE_SOURCE_DIR}/cmake/AddBgfxShader.cmake)
+
 add_executable(app
     "imgui_bgfx.cpp"
     "imgui_bgfx.h"
     "main.cpp"
 )
+
+add_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc app)
+add_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc app)
 
 target_link_libraries(app PRIVATE
     core
