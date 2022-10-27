@@ -192,7 +192,7 @@ public:
 			bgfx::setViewRect(id, 0, 0, bgfx::BackbufferRatio::Equal);
 		}
 
-		bool use_imgui = false;
+		bool use_imgui = true;
 
 		imguiCreate(s_imgui_view);
 
@@ -575,9 +575,9 @@ private:
 	bgfx::ProgramHandle m_program;
 	s32 m_pt = 0;
 	u64 m_timeOffset;
-	bool m_r =false;
-	bool m_g = false;
-	bool m_b = false;
+	bool m_r = true;
+	bool m_g = true;
+	bool m_b = true;
 	bool m_a = false;
 
 
