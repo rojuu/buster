@@ -5,6 +5,7 @@ add_executable(app
     "imgui_bgfx.h"
     "main.cpp"
 )
+set_target_properties(app PROPERTIES WIN32_EXECUTABLE $<NOT:$<BOOL:${IS_INTERNAL_BUILD}>>)
 
 add_bgfx_shader(app app_vs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc)
 add_bgfx_shader(app app_fs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc)
