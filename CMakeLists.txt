@@ -14,7 +14,6 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 option(IS_INTERNAL_BUILD "Internal build for, enables development only features" OFF)
-option(USE_ASAN "Build with ASAN" OFF)
 
 add_subdirectory(src)
 add_subdirectory(thirdparty)

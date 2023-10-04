@@ -24,9 +24,5 @@ target_link_libraries(app PRIVATE
 
 target_include_directories(app
     PRIVATE $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>
-    ${CMAKE_SOURCE_DIR}/thirdparty/imgui)
-
-target_compile_options(app
-    PRIVATE
-        $<$<BOOL:${USE_ASAN}>:/fsanitize=address>
+    ${CMAKE_SOURCE_DIR}/thirdparty/imgui
 )
