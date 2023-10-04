@@ -10,7 +10,10 @@
         "name": "base", 
         "displayName": "Base",
         "hidden": true,
-        "binaryDir": "${sourceDir}/build/${presetName}"
+        "binaryDir": "${sourceDir}/build/${presetName}",
+        "cacheVariables": {
+            "BGFX_BUILD_EXAMPLES": "OFF"
+        }
       },
       {
         "name": "release", 
