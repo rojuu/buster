@@ -24,10 +24,10 @@ target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
 
 target_compile_definitions(core
     PUBLIC
-        IS_INTERNAL_BUILD=$<IF:$<BOOL:${IS_INTERNAL_BUILD}>,1,0>
-        IS_DEBUG_BUILD=$<IF:$<CONFIG:Debug>,1,0>
-        IS_RELEASE_BUILD=$<IF:$<CONFIG:Debug>,0,1>
+        IS_INTERNAL_BUILD=$<BOOL:${IS_INTERNAL_BUILD}>
+        IS_DEBUG_BUILD=$<CONFIG:Debug>
+        IS_RELEASE_BUILD=$<NOT:$<CONFIG:Debug>>
         SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
-        PLATFORM_WIN32=1
+        PLATFORM_WIN32=$<PLATFORM_ID:Windows>
         _CRT_SECURE_NO_WARNINGS=1
 )
