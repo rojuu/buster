@@ -351,7 +351,6 @@ public:
 
 			ImGui::ShowDemoWindow();
 
-
 			ImGui::Render();
 
 			if (use_imgui) imguiEndFrame();
@@ -539,6 +538,8 @@ public:
 
 		String filepath = String(shaderpath) + String(name) + String(".bin");
 		auto filedata = read_entire_file_as_bytes(filepath.c_str());
+		// TODO: Add a way to take ownership of the allocated data from Vector, so we wouldn't need to
+		// copy the buffer here.
 		bgfx::ShaderHandle handle = bgfx::createShader(bgfx::copy(filedata.data(), (u32)filedata.size()));
 		bgfx::setName(handle, name);
 

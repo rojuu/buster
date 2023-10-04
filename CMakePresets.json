@@ -1,0 +1,86 @@
+{
+    "version": 4,
+    "cmakeMinimumRequired": {
+      "major": 3,
+      "minor": 20,
+      "patch": 0
+    },
+    "configurePresets": [
+      {
+        "name": "base", 
+        "displayName": "Base",
+        "hidden": true,
+        "binaryDir": "${sourceDir}/build/${presetName}"
+      },
+      {
+        "name": "release", 
+        "displayName": "Release",
+        "inherits": "base",
+        "cacheVariables": {
+          "IS_INTERNAL_BUILD": "OFF",
+          "USE_ASAN": "OFF",
+          "CMAKE_BUILD_TYPE": "Release"
+        }
+      },
+      {
+        "name": "release_internal",
+        "displayName": "Release Internal",
+        "inherits": "release",
+        "cacheVariables": {
+            "IS_INTERNAL_BUILD": "ON"
+        }
+      },
+      {
+        "name": "release_internal_asan",
+        "displayName": "Release Internal ASAN",
+        "inherits": "release",
+        "cacheVariables": {
+            "IS_INTERNAL_BUILD": "ON",
+            "USE_ASAN": "ON"
+        }
+      },
+      {
+        "name": "release_asan",
+        "displayName": "Release ASAN",
+        "inherits": "release",
+        "cacheVariables": {
+            "USE_ASAN": "ON"
+        }
+      },
+      {
+        "name": "debug",
+        "displayName": "Debug",
+        "inherits": "base",
+        "cacheVariables": {
+            "IS_INTERNAL_BUILD": "OFF",
+            "USE_ASAN": "OFF",
+            "CMAKE_BUILD_TYPE": "Debug"
+        }
+      },
+      {
+        "name": "debug_internal",
+        "displayName": "Debug Internal",
+        "inherits": "debug",
+        "cacheVariables": {
+            "IS_INTERNAL_BUILD": "ON"
+        }
+      },
+      {
+        "name": "debug_internal_asan",
+        "displayName": "Debug Internal ASAN",
+        "inherits": "debug",
+        "cacheVariables": {
+            "IS_INTERNAL_BUILD": "ON",
+            "USE_ASAN": "ON"
+        }
+      },
+      {
+        "name": "debug_asan",
+        "displayName": "Debug ASAN",
+        "inherits": "debug",
+        "cacheVariables": {
+            "USE_ASAN": "ON"
+        }
+      }
+    ]
+  }

@@ -6,8 +6,11 @@ add_executable(app
     "main.cpp"
 )
 
-add_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc app)
-add_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc app)
+add_bgfx_shader(app app_vs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc)
+add_bgfx_shader(app app_fs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc)
+add_bgfx_shader_header(app app_common_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.sh)
+add_bgfx_shader_header(app app_varying_def_sc ${CMAKE_CURRENT_SOURCE_DIR}/shaders/varying.def.sc)
+
 
 target_link_libraries(app PRIVATE
     core

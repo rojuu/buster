@@ -2,7 +2,7 @@ include(CMakeParseArguments)
 
 include(${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/cmake/bgfxToolUtils.cmake)
 
-function( add_bgfx_shader FILE TARGET)
+function( add_bgfx_shader TARGET NAME FILE)
 	set (ORIGINAL_FILE ${FILE})
 	get_filename_component( FILENAME "${FILE}" NAME_WE )
 	string( SUBSTRING "${FILENAME}" 0 2 TYPE )
@@ -89,13 +89,25 @@ function( add_bgfx_shader FILE TARGET)
 
 		message(STATUS ${ORIGINAL_FILE})
 
-		add_custom_command(
-			TARGET ${TARGET}
-			POST_BUILD
-			MAIN_DEPENDENCY ${ORIGINAL_FILE}
-			DEPENDS bgfx::shaderc
+		add_custom_target(${NAME}
+			SOURCES ${ORIGINAL_FILE}
+			COMMENT "Compiling shader ${ORIGINAL_FILE} for ${OUTPUTS_PRETTY}"
 			${COMMANDS}
-			COMMENT "Compiling shader ${PRINT_NAME} for ${OUTPUTS_PRETTY}"
 		)
+		add_dependencies(${NAME} shaderc)
+		#add_custom_command(
+		#	OUTPUT ${ORIGINAL_FILE}
+		#	DEPENDS bgfx::shaderc
+		#	COMMENT "Compiling shader ${ORIGINAL_FILE} for ${OUTPUTS_PRETTY}"
+		#	${COMMANDS}
+		#)
+		add_dependencies(${TARGET} ${NAME})
 	endif()
+endfunction()
+
+function(add_bgfx_shader_header TARGET NAME FILE)
+	add_custom_target(${NAME}
+		SOURCES ${FILE}
+	)
+	add_dependencies(${TARGET} ${NAME})
 endfunction()
