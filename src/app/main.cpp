@@ -2,6 +2,8 @@
 #include "core/utils.h"
 #include "core/containers/common.h"
 
+#include "bgfx_callback.h"
+
 #include "SDL.h"
 #include "SDL_syswm.h"
 
@@ -169,6 +171,8 @@ public:
 		bgfx::Init init;
 		init.platformData.ndt = get_native_display_type();
 		init.platformData.nwh = get_native_window_handle();
+		init.callback = &bgfx_callbacks;
+		init.profile = true;
 
 #if IS_DEBUG_BUILD
 		init.debug = true;
@@ -193,7 +197,6 @@ public:
 		}
 
 		bool use_imgui = true;
-
 		imguiCreate(s_imgui_view);
 
 		auto bgfx_guard = ScopeGuard([] {
@@ -216,8 +219,8 @@ public:
 			//| ImGuiConfigFlags_NavEnableGamepad
 			| ImGuiConfigFlags_NavEnableKeyboard
 			;
+		
 		bool show_stats = true;
-
 		bool quit = false;
 		for (;;)
 		{
@@ -241,24 +244,26 @@ public:
 						bool down = event.type == SDL_KEYDOWN;
 
 						SDL_Keycode keycode = event.key.keysym.sym;
-
-						ImGuiKey imgui_key = sdlk_to_imgui(keycode);
-						if (imgui_key != ImGuiKey_None) {
-							io.AddKeyEvent(imgui_key, down);
-							io.SetKeyEventNativeData(imgui_key, keycode, event.key.keysym.scancode);
-						}
-
 						auto is_down = [&](auto modifier) -> bool {
 							return down && event.key.keysym.sym == modifier;
 						};
 
-						io.AddKeyEvent(ImGuiKey_ModShift, is_down(SDLK_LSHIFT) || is_down(SDLK_RSHIFT));
-						io.AddKeyEvent(ImGuiKey_ModCtrl, is_down(SDLK_LCTRL) || is_down(SDLK_RCTRL));
-						io.AddKeyEvent(ImGuiKey_ModAlt, is_down(SDLK_LALT) || is_down(SDLK_RALT));
-						io.AddKeyEvent(ImGuiKey_ModSuper, is_down(SDL_SCANCODE_LGUI) || is_down(SDL_SCANCODE_RGUI));
+						if (use_imgui) {
+							ImGuiKey imgui_key = sdlk_to_imgui(keycode);
+							if (imgui_key != ImGuiKey_None) {
+								io.AddKeyEvent(imgui_key, down);
+								io.SetKeyEventNativeData(imgui_key, keycode, event.key.keysym.scancode);
+							}
+
+							io.AddKeyEvent(ImGuiKey_ModShift, is_down(SDLK_LSHIFT) || is_down(SDLK_RSHIFT));
+							io.AddKeyEvent(ImGuiKey_ModCtrl, is_down(SDLK_LCTRL) || is_down(SDLK_RCTRL));
+							io.AddKeyEvent(ImGuiKey_ModAlt, is_down(SDLK_LALT) || is_down(SDLK_RALT));
+							io.AddKeyEvent(ImGuiKey_ModSuper, is_down(SDL_SCANCODE_LGUI) || is_down(SDL_SCANCODE_RGUI));
+						}
 
 						if (is_down(SDLK_ESCAPE)) quit = true;
 						if (is_down(SDLK_F1)) show_stats = !show_stats;
+						if (is_down(SDLK_F2)) use_imgui = !use_imgui;
 					} break;
 
 					case SDL_MOUSEWHEEL:
@@ -269,9 +274,11 @@ public:
 
 					case SDL_TEXTINPUT:
 					{
-						for (char *ic = event.text.text; *ic; ic++)
-						{
-							io.AddInputCharacter((u32)*ic);
+						if (use_imgui) {
+							for (char* ic = event.text.text; *ic; ic++)
+							{
+								io.AddInputCharacter((u32)*ic);
+							}
 						}
 					} break;
 				}
@@ -290,39 +297,19 @@ public:
 			const u64 frameTime = now - m_last_time;
 			m_last_time = now;
 			io.DeltaTime = float(double(frameTime) / double(freq));
+			
+			if (use_imgui) {
+				s32 mouse_x, mouse_y;
+				u32 mouse_state = SDL_GetMouseState(&mouse_x, &mouse_y);
 
-			s32 mouse_x, mouse_y;
-			u32 mouse_state = SDL_GetMouseState(&mouse_x, &mouse_y);
-
-			io.AddMousePosEvent((float)mouse_x, (float)mouse_y);
-			io.AddMouseButtonEvent(ImGuiMouseButton_Left, (mouse_state & SDL_BUTTON_LMASK) != 0);
-			io.AddMouseButtonEvent(ImGuiMouseButton_Right, (mouse_state & SDL_BUTTON_RMASK) != 0);
-			io.AddMouseButtonEvent(ImGuiMouseButton_Middle, (mouse_state & SDL_BUTTON_MMASK) != 0);
-			io.AddMouseWheelEvent(scrollX, scrollY);
+				io.AddMousePosEvent((float)mouse_x, (float)mouse_y);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, (mouse_state & SDL_BUTTON_LMASK) != 0);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Right, (mouse_state & SDL_BUTTON_RMASK) != 0);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Middle, (mouse_state & SDL_BUTTON_MMASK) != 0);
+				io.AddMouseWheelEvent(scrollX, scrollY);
+			}
 
 			ImGui::NewFrame();
-			//ImGuizmo::BeginFrame();
-
-			ImGui::DockSpaceOverViewport();
-
-			if (ImGui::BeginMainMenuBar())
-			{
-				if (ImGui::BeginMenu("File"))
-				{
-					if (ImGui::MenuItem("Exit", "Escape")) {
-						quit = true;
-					}
-					ImGui::EndMenu();
-				}
-				if (ImGui::BeginMenu("Debug"))
-				{
-					if (ImGui::MenuItem("Toggle stats", "F1")) {
-						show_stats = !show_stats;
-					}
-					ImGui::EndMenu();
-				}
-			}
-			ImGui::EndMainMenuBar();
 
 			bgfx::dbgTextClear();
 			if (window_width != m_old_window_width || window_height != m_old_window_height) {
@@ -565,17 +552,19 @@ private:
 	enum ViewIds : bgfx::ViewId
 	{
 		s_clear_view,
-		s_imgui_view,
 		s_cube_view,
+		s_imgui_view,
 		s_view_count,
 	};
 
+
+	BgfxCallback bgfx_callbacks;
 
 	bgfx::VertexBufferHandle m_vbh;
 	bgfx::IndexBufferHandle m_ibh[ARRAY_COUNT(s_ptState)];
 	bgfx::ProgramHandle m_program;
 	s32 m_pt = 0;
-	u64 m_timeOffset;
+	u64 m_timeOffset = 0;
 	bool m_r = true;
 	bool m_g = true;
 	bool m_b = true;

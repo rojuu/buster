@@ -12,6 +12,9 @@ add_library(core STATIC
     "utils.cpp"
 )
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
+target_link_libraries(core
+    PUBLIC
+        spdlog::spdlog)
 
 # define SPDLOG_ACTIVE_LEVEL to one of those (before including spdlog.h):
 # SPDLOG_LEVEL_TRACE,
@@ -27,7 +30,7 @@ target_compile_definitions(core
         IS_INTERNAL_BUILD=$<BOOL:${IS_INTERNAL_BUILD}>
         IS_DEBUG_BUILD=$<CONFIG:Debug>
         IS_RELEASE_BUILD=$<NOT:$<CONFIG:Debug>>
-        SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
+        SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
         PLATFORM_WIN32=$<PLATFORM_ID:Windows>
         _CRT_SECURE_NO_WARNINGS=1
 )

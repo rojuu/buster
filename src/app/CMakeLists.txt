@@ -4,7 +4,8 @@ add_executable(app
     "imgui_bgfx.cpp"
     "imgui_bgfx.h"
     "main.cpp"
-)
+    "bgfx_callback.h"
+    "bgfx_callback.cpp")
 set_target_properties(app PROPERTIES WIN32_EXECUTABLE $<NOT:$<BOOL:${IS_INTERNAL_BUILD}>>)
 
 add_custom_target(app_shaders)
