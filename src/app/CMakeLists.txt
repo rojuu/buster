@@ -7,11 +7,14 @@ add_executable(app
 )
 set_target_properties(app PROPERTIES WIN32_EXECUTABLE $<NOT:$<BOOL:${IS_INTERNAL_BUILD}>>)
 
-add_bgfx_shader(app app_vs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc)
-add_bgfx_shader(app app_fs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc)
-add_bgfx_shader_header(app app_common_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.sh)
-add_bgfx_shader_header(app app_varying_def_sc ${CMAKE_CURRENT_SOURCE_DIR}/shaders/varying.def.sc)
-
+add_custom_target(app_shaders)
+add_custom_target(app_headers
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.sh
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/varying.def.sc
+)
+add_bgfx_shader(app app_headers app_vs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_cubes.sc)
+add_bgfx_shader(app app_headers app_fs_cubes_sh ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_cubes.sc)
 
 target_link_libraries(app PRIVATE
     core

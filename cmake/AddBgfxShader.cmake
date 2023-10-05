@@ -2,7 +2,7 @@ include(CMakeParseArguments)
 
 include(${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/cmake/bgfxToolUtils.cmake)
 
-function( add_bgfx_shader TARGET NAME FILE)
+function( add_bgfx_shader TARGET HEADER_TARGET NAME FILE)
 	set (ORIGINAL_FILE ${FILE})
 	get_filename_component( FILENAME "${FILE}" NAME_WE )
 	string( SUBSTRING "${FILENAME}" 0 2 TYPE )
@@ -76,9 +76,10 @@ function( add_bgfx_shader TARGET NAME FILE)
 			shaderc_parse( SPIRV ${COMMON} LINUX PROFILE spirv OUTPUT ${SPIRV_OUTPUT} )
 			list( APPEND OUTPUTS "SPIRV" )
 			set( OUTPUTS_PRETTY "${OUTPUTS_PRETTY}SPIRV" )
-			set( OUTPUT_FILES "" )
-			set( COMMANDS "" )
 		endif()
+
+		set( OUTPUT_FILES "" )
+		set( COMMANDS "" )
 
 		foreach( OUT ${OUTPUTS} )
 			list( APPEND OUTPUT_FILES ${${OUT}_OUTPUT} )
@@ -87,27 +88,18 @@ function( add_bgfx_shader TARGET NAME FILE)
 			file( MAKE_DIRECTORY ${OUT_DIR} )
 		endforeach()
 
-		message(STATUS ${ORIGINAL_FILE})
+		get_target_property(HEADER_FILES ${HEADER_TARGET} SOURCES)
 
-		add_custom_target(${NAME}
-			SOURCES ${ORIGINAL_FILE}
-			COMMENT "Compiling shader ${ORIGINAL_FILE} for ${OUTPUTS_PRETTY}"
+		add_custom_target(${NAME} DEPENDS ${OUTPUT_FILES})
+		add_custom_command(
+			MAIN_DEPENDENCY ${ORIGINAL_FILE}
+			OUTPUT ${OUTPUT_FILES}
 			${COMMANDS}
+			DEPENDS shaderc ${HEADER_FILES}
+			COMMENT "Compiling shader ${ORIGINAL_FILE} for ${OUTPUTS_PRETTY}"
 		)
-		add_dependencies(${NAME} shaderc)
-		#add_custom_command(
-		#	OUTPUT ${ORIGINAL_FILE}
-		#	DEPENDS bgfx::shaderc
-		#	COMMENT "Compiling shader ${ORIGINAL_FILE} for ${OUTPUTS_PRETTY}"
-		#	${COMMANDS}
-		#)
+
 		add_dependencies(${TARGET} ${NAME})
 	endif()
 endfunction()
 
-function(add_bgfx_shader_header TARGET NAME FILE)
-	add_custom_target(${NAME}
-		SOURCES ${FILE}
-	)
-	add_dependencies(${TARGET} ${NAME})
-endfunction()
