@@ -142,9 +142,9 @@ public:
 			LOG_CRITICAL("Unable to initialize SDL: {}", SDL_GetError());
 			return EXIT_FAILURE;
 		}
-		auto sdl_guard = ScopeGuard([] {
+		defer {
 			SDL_Quit();
-		});
+		};
 
 		m_window = SDL_CreateWindow(
 			"A window title",
@@ -155,9 +155,9 @@ public:
 			LOG_CRITICAL("Unable to create SDL_Window: {}", SDL_GetError());
 			return EXIT_FAILURE;
 		}
-		auto window_guard = ScopeGuard([this] {
+		defer {
 			SDL_DestroyWindow(m_window);
-		});
+		};
 
 		zero_struct(&m_wm_info);
 		SDL_VERSION(&m_wm_info.version);
@@ -199,15 +199,15 @@ public:
 		bool use_imgui = true;
 		imguiCreate(s_imgui_view);
 
-		auto bgfx_guard = ScopeGuard([] {
+		defer {
 			imguiDestroy();
 			bgfx::shutdown();
-		});
+		};
 
 		create_cube_stuff();
-		auto cube_guard = ScopeGuard([this] {
+		defer {
 			destroy_cube_stuff();
-		});
+		};
 
 		ImGuiIO& io = ImGui::GetIO();
 

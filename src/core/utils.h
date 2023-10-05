@@ -110,4 +110,13 @@ public:
 template<class F>
 ScopeGuard(F&&)->ScopeGuard<F>;
 
+struct DeferFactory_ {
+    template<typename F>
+    ScopeGuard<F> operator<<(F &&f) {
+        return ScopeGuard<F>{forward<F>(f)};
+    }
+};
+static inline DeferFactory_ defer_factory_;
+#define defer const auto MACRO_VAR(deferrer_) = defer_factory_ << [&]
+
 Vector<u8> read_entire_file_as_bytes(const char* filename);

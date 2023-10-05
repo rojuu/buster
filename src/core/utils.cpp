@@ -10,7 +10,7 @@ void logger_init()
 Vector<u8> read_entire_file_as_bytes(const char *filename)
 {
 	FILE *file = fopen(filename, "rb");
-	auto file_guard = ScopeGuard([file] { fclose(file); });
+	defer { fclose(file); };
 	fseek(file, 0, SEEK_END);
 	usz size = ftell(file);
 	Vector<u8> data(size);
