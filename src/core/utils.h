@@ -7,6 +7,9 @@
 #include <limits>
 #include <spdlog/spdlog.h>
 
+#include <utility>
+
+namespace core::utils {
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -74,31 +77,12 @@ inline void zero_struct(T* s) {
     memset(s, 0, sizeof(*s));
 }
 
-template<class T>
-constexpr remove_reference_t<T>&& move(T&& t) noexcept
-{
-    return static_cast<typename remove_reference<T>::type&&>(t);
-}
-
-template<class T>
-constexpr T&& forward(remove_reference_t<T>& t) noexcept
-{
-    return static_cast<T&&>(t);
-}
-
-template<class T>
-constexpr T&& forward(remove_reference_t<T>&& t) noexcept
-{
-    return static_cast<T&&>(t);
-}
-
-
 template<class F>
 class ScopeGuard {
     F func;
 public:
     ScopeGuard(F&& f)
-        : func(forward<F&&>(f))
+        : func(std::forward<F&&>(f))
     {
     }
     ~ScopeGuard()
@@ -113,10 +97,12 @@ ScopeGuard(F&&)->ScopeGuard<F>;
 struct DeferFactory_ {
     template<typename F>
     ScopeGuard<F> operator<<(F &&f) {
-        return ScopeGuard<F>{forward<F>(f)};
+        return ScopeGuard<F>{std::forward<F>(f)};
     }
 };
 static inline DeferFactory_ defer_factory_;
-#define defer const auto MACRO_VAR(deferrer_) = defer_factory_ << [&]
+#define defer const auto MACRO_VAR(deferrer_) = core::utils::defer_factory_ << [&]
 
 Vector<u8> read_entire_file_as_bytes(const char* filename);
+
+}

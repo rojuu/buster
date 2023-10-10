@@ -10,11 +10,23 @@ add_library(core STATIC
     "typetraits.h"
     "utils.h"
     "utils.cpp"
+    "own_ptr.h"
+    "platform.h"
+    
+    "platform_win32.cpp"
+    "platform_sdl2.cpp"
+ "platform_sdl2.h" "containers/list.h")
+target_include_directories(core PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/
+    ${CMAKE_SOURCE_DIR}/src/core
 )
-target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src/)
 target_link_libraries(core
     PUBLIC
-        spdlog::spdlog)
+        spdlog::spdlog
+        SDL2::SDL2
+    PRIVATE
+        Shlwapi.lib
+)
 
 # define SPDLOG_ACTIVE_LEVEL to one of those (before including spdlog.h):
 # SPDLOG_LEVEL_TRACE,

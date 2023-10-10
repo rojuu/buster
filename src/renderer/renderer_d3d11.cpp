@@ -1,0 +1,1013 @@
+// Copyright (c) 2021-2023, Roni Juppi <roni.juppi@gmail.com>
+
+#include "renderer.h"
+#include "platform.h"
+#include "utils.h"
+#include "containers/common.h"
+#include "containers/list.h"
+
+#pragma warning(push, 0)
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#pragma warning(pop)
+
+#pragma warning(push, 0)
+#define STBRP_ASSERT(cond) ASSERT(cond, "stb_rect_pack");
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "stb_rect_pack.h"
+#pragma warning(pop)
+
+#pragma warning(push, 0)
+#define STBTT_assert(cond) ASSERT(cond, "stb_truetype")
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+#pragma warning(pop)
+
+#pragma warning(push, 0)
+#include <d3d11.h>
+#include <dxgi.h>
+#include <d3dcompiler.h>
+#pragma warning(pop)
+
+#undef min
+#undef max
+
+using namespace core::utils;
+using namespace core::containers;
+
+namespace renderer {
+
+static void d3d11_print_last_error(const char* msg)
+{
+    char err[256] = { 0 };
+    auto last_error = GetLastError();
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, last_error,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), err, ARRAY_COUNT(err) - 1, NULL);
+    LOG_ERROR("{}: {}", msg, err);
+}
+
+
+
+struct D3D_ShaderData
+{
+    ID3D11VertexShader* vertex_shader{};
+    ID3D11PixelShader* pixel_shader{};
+    ID3D11InputLayout* input_layout{};
+
+    bool is_valid() {
+        bool result = vertex_shader && pixel_shader && input_layout;
+        return result;
+    }
+};
+
+struct Texture_D3D11 : public Texture
+{
+    ID3D11SamplerState* sampler_state{};
+    ID3D11Texture2D* texture{};
+    ID3D11ShaderResourceView* texture_view{};
+};
+
+struct Font_D3D11
+{
+    Texture_D3D11* atlas{};
+
+    Vector<stbtt_packedchar> packed_chars;
+    u32 num_chars{};
+    u32 first_char{};
+    u32 last_char{};
+
+    f32 ascent{};
+    f32 descent{};
+    f32 line_gap{};
+};
+
+struct SpriteDrawCmd
+{
+    Rect src{};
+    Rect dst{};
+    ColorGradient gradient{};
+    f32 edge_softness{};
+    f32 corner_radius{};
+    f32 border_thickness{};
+};
+
+struct SpriteBatch
+{
+    Texture_D3D11* texture{};
+    Vector<SpriteDrawCmd> sprite_commands;
+
+    bool is_valid()
+    {
+        bool result = !(sprite_commands.empty() && texture == 0);
+        return result;
+    }
+};
+
+
+class D3D11_RendererState;
+
+class D3D11_Renderer : public Renderer {
+public:
+    ~D3D11_Renderer();
+
+    virtual core::own_ptr<RendererState> create_state();
+
+    D3D_ShaderData create_shader(
+        const char* shader_filename,
+        D3D11_INPUT_ELEMENT_DESC const* input_elem_descs,
+        usz input_elem_descs_count,
+        D3D_SHADER_MACRO const* defines);
+
+    HDC m_hdc{};
+    HINSTANCE m_hinstance{};
+    HWND m_hwnd{};
+
+    ID3D11Device* m_device{};
+    ID3D11DeviceContext* m_device_context{};
+    IDXGISwapChain* m_swap_chain{};
+
+    u32 m_window_width{};
+    u32 m_window_height{};
+};
+
+
+class D3D11_RendererState : public RendererState
+{
+public:
+    explicit D3D11_RendererState(D3D11_Renderer* renderer)
+        : m_renderer(renderer)
+    {
+    }
+
+    ~D3D11_RendererState() override;
+
+    void begin_frame(Color color) override;
+    void end_frame(u64* out_draw_calls) override;
+    TextureHandle create_texture(u32* pixels, u32 width, u32 height) override;
+    TextureHandle create_texture_from_file(const char* filename) override;
+    void draw_rect_pro(Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) override;
+    void draw_sprite_pro(TextureHandle texture, Rect src, Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) override;
+    void draw_sprite_tint(TextureHandle texture, Rect src, Rect dst, Color tint_color) override;
+    void draw_sprite(TextureHandle texture, Rect src, Rect dst) override;
+    FontHandle create_font(const char* font_file, f32 size) override;
+    void draw_text_tint(FontHandle font, u8* text, usz text_len, f32 x, f32 y, Color tint_color) override;
+    void draw_text(FontHandle font, u8* text, usz text_len, f32 x, f32 y) override;
+
+    void end_sprite_batch(SpriteBatch& sprite_batch);
+    Texture_D3D11* create_font_texture(u8 const* pixels, u32 width, u32 height);
+    void draw_glyph_and_advance(Font_D3D11* font, u32 glyph, f32* x, f32* y, Color tint_color);
+
+
+    D3D11_Renderer* m_renderer{};
+
+    usz m_sprite_batches_in_flight{};
+    usz m_max_sprite_count_in_sprite_batches{};
+
+    u64 m_draw_calls_in_frame{};
+
+    SpriteBatch m_current_sprite_batch{};
+
+    List<Texture_D3D11> m_textures;
+
+    List<Font_D3D11> m_fonts;
+
+    TextureHandle m_white_texture{};
+
+    ID3D11RenderTargetView* m_render_target_view{};
+    ID3D11RasterizerState* m_rasterizer_state{};
+
+    ID3D11BlendState* m_blend_state{};
+
+    D3D_ShaderData m_error_shader{};
+
+    D3D_ShaderData m_shader{};
+    u64 m_last_shader_write_time{};
+    f64 m_file_check_time{};
+
+    ID3D11Buffer* m_constant_buffer{};
+
+    ID3D11Buffer* m_per_vertex_buffer{};
+    ID3D11Buffer* m_per_instance_buffer{};
+    ID3D11Buffer* m_index_buffer{};
+};
+
+static u32 font_char_index(Font_D3D11*font, u32 character)
+{
+    u32 result = character - font->first_char;
+    return result;
+}
+
+static f32 font_y_advance(Font_D3D11* font)
+{
+    f32 result = font->ascent - font->descent + font->line_gap;
+    return result;
+}
+
+struct VertexData
+{
+    f32 x{}, y{};
+    f32 u{}, v{};
+};
+
+struct InstanceData
+{
+    f32 colors[4*4]{};
+    f32 src_rect[4]{};
+    f32 dst_rect[4]{};
+    f32 edge_softness{};
+    f32 corner_radius{};
+    f32 border_thickness{};
+};
+
+// We allocate one large buffer for vertices needed in drawing. We cannot have more draw
+// commands in a batch than can fit into that buffer.
+// For 6*MiB buffer we can have 58254 commands per sprite batch assuming sizeof(InstanceData) is 104
+#define MAX_COMMANDS_PER_SPRITE_BATCH ((6 * MiB) / sizeof(InstanceData))
+static_assert(sizeof(InstanceData) == 108); // This is an assumption in the comment above
+
+struct ShaderConstants
+{
+    f32 window_size_x{};
+    f32 window_size_y{};
+    f32 texture_size_x{};
+    f32 texture_size_y{};
+};
+
+
+D3D_ShaderData D3D11_Renderer::create_shader(
+    const char *shader_filename,
+    D3D11_INPUT_ELEMENT_DESC const* input_elem_descs,
+    usz input_elem_descs_count,
+    D3D_SHADER_MACRO const* defines)
+{
+    D3D_ShaderData result = {0};
+    HRESULT hr;
+
+    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined(IS_DEBUG_BUILD)
+    flags |= D3DCOMPILE_DEBUG; // add more debug output
+#endif
+    ID3DBlob* vs_blob = NULL, * ps_blob = NULL, * error_blob = NULL;
+
+    auto shader_file = read_entire_file_as_bytes(shader_filename);
+
+    hr = D3DCompile(
+        shader_file.data(),
+        shader_file.size(),
+        shader_filename,
+        defines,
+        D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        "vs_main",
+        "vs_5_0",
+        flags, 0,
+        &vs_blob,
+        &error_blob);
+    if (FAILED(hr))
+    {
+        if (error_blob)
+        {
+            LOG_ERROR("Vertex compile error: {}", (char*)error_blob->GetBufferPointer());
+            error_blob->Release();
+        }
+
+        if (vs_blob)
+        {
+            vs_blob->Release();
+            vs_blob = NULL;
+        }
+    }
+
+    hr = D3DCompile(
+        shader_file.data(),
+        shader_file.size(),
+        shader_filename,
+        defines,
+        D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        "ps_main",
+        "ps_5_0",
+        flags, 0,
+        &ps_blob,
+        &error_blob);
+    if (FAILED(hr))
+    {
+        if (error_blob)
+        {
+
+            LOG_ERROR("Fragment compile error: {}", (char*)error_blob->GetBufferPointer());
+            error_blob->Release();
+        }
+        if (ps_blob)
+        {
+            ps_blob->Release();
+            ps_blob = NULL;
+        }
+    }
+
+    if (vs_blob)
+    {
+        hr = m_device->CreateVertexShader(
+            vs_blob->GetBufferPointer(),
+            vs_blob->GetBufferSize(),
+            NULL,
+            &result.vertex_shader);
+        ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    }
+
+    if (ps_blob)
+    {
+        hr = m_device->CreatePixelShader(
+            ps_blob->GetBufferPointer(),
+            ps_blob->GetBufferSize(),
+            NULL,
+            &result.pixel_shader);
+        ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    }
+
+    if (vs_blob)
+    {
+        hr = m_device->CreateInputLayout(
+            input_elem_descs,
+            (UINT)input_elem_descs_count,
+            vs_blob->GetBufferPointer(),
+            vs_blob->GetBufferSize(),
+            &result.input_layout);
+        ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    }
+
+    return result;
+}
+
+static const D3D11_INPUT_ELEMENT_DESC shader_input_element_descs[] = {
+    { "POS", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+
+    { "COL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "COL", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "COL", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "COL", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "SRC", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "DST", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "ESFT", 0, DXGI_FORMAT_R32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "CRNR", 0, DXGI_FORMAT_R32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "BRDT", 0, DXGI_FORMAT_R32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+};
+
+static String make_shader_filename(const char *shader_name)
+{
+    String result = String("C:/Users/roju2/p/foster/run_dir/") 
+        + String("shaders/") + shader_name + String(".hlsl");
+    return result;
+}
+
+core::own_ptr<RendererState> D3D11_Renderer::create_state()
+{
+    auto state = core::make_owned<D3D11_RendererState>(this);
+
+    HRESULT hr;
+
+    ID3D11Texture2D* framebuffer;
+    hr = m_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)& framebuffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    hr = m_device->CreateRenderTargetView(
+        (ID3D11Resource*)framebuffer,
+        0,
+        &state->m_render_target_view);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    framebuffer->Release();
+
+    D3D11_RASTERIZER_DESC rasterizer_desc = {};
+    rasterizer_desc.FillMode = D3D11_FILL_SOLID;
+    rasterizer_desc.CullMode = D3D11_CULL_BACK;
+    rasterizer_desc.FrontCounterClockwise = true;
+    //rasterizer_desc.MultisampleEnable = true;
+    //rasterizer_desc.AntialiasedLineEnable = true;
+    hr = m_device->CreateRasterizerState(&rasterizer_desc, &state->m_rasterizer_state);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BLEND_DESC blend_desc = {};
+    blend_desc.RenderTarget[0].BlendEnable = true;
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D10_COLOR_WRITE_ENABLE_ALL;
+    hr = m_device->CreateBlendState(&blend_desc, &state->m_blend_state);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D_SHADER_MACRO error_shader_defines[2] = {}; // +1 for nul termination
+    error_shader_defines[0].Name = "ERROR_SHADER";
+    error_shader_defines[0].Definition = "1";
+    auto main_shader_filename = make_shader_filename("shader");
+    state->m_error_shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), error_shader_defines);
+    ASSERT_UNCHECKED(state->m_error_shader.is_valid(), "");
+
+    state->m_shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
+    if (!state->m_shader.is_valid())
+    {
+        state->m_shader = state->m_error_shader;
+    }
+
+    state->m_last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
+    state->m_file_check_time = platform_get_highresolution_time_seconds();
+
+    static const VertexData vertices[] = {
+        // pos           tex
+        -1.f, -1.f,      0, 1,
+         1.f, -1.f,      1, 1,
+         1.f,  1.f,      1, 0,
+        -1.f,  1.f,      0, 0,
+    };
+    D3D11_BUFFER_DESC per_vertex_buffer_desc = {};
+    per_vertex_buffer_desc.ByteWidth = sizeof(vertices);
+    per_vertex_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+    per_vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA per_vertex_sr = {};
+    per_vertex_sr.pSysMem = vertices;
+    hr = m_device->CreateBuffer(
+        &per_vertex_buffer_desc,
+        &per_vertex_sr,
+        &state->m_per_vertex_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BUFFER_DESC per_instance_buffer_desc = {};
+    per_instance_buffer_desc.ByteWidth = sizeof(InstanceData) * MAX_COMMANDS_PER_SPRITE_BATCH;
+    per_instance_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+    per_instance_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    per_instance_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = m_device->CreateBuffer(
+        &per_instance_buffer_desc,
+        NULL,
+        &state->m_per_instance_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    static const u16 indices[] = {
+        0, 1, 2,
+        0, 2, 3,
+    };
+    D3D11_BUFFER_DESC index_buffer_desc = {0};
+    index_buffer_desc.ByteWidth = sizeof(indices);
+    index_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+    index_buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA index_sr_data = {0};
+    index_sr_data.pSysMem = indices;
+    hr = m_device->CreateBuffer(
+        &index_buffer_desc,
+        &index_sr_data,
+        &state->m_index_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BUFFER_DESC constant_buffer_desc = {0};
+    constant_buffer_desc.ByteWidth = (UINT)align_forwards(sizeof(ShaderConstants), 16);
+    constant_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+    constant_buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constant_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    m_device->CreateBuffer(&constant_buffer_desc, NULL, &state->m_constant_buffer);
+
+    {
+        u32 pixels[1] = { ~0u };
+        state->m_white_texture = state->create_texture(pixels, 1, 1);
+    }
+  
+    return state;
+}
+
+D3D11_RendererState::~D3D11_RendererState()
+{
+    for (auto &texture : m_textures)
+    {
+        texture.sampler_state->Release();
+        texture.texture->Release();
+        texture.texture_view->Release();
+    }
+
+    m_blend_state->Release();
+    m_shader.vertex_shader->Release();
+    m_shader.pixel_shader->Release();
+    m_shader.input_layout->Release();
+    m_constant_buffer->Release();
+    m_per_vertex_buffer->Release();
+    m_per_instance_buffer->Release();
+    m_render_target_view->Release();
+    m_rasterizer_state->Release();
+
+    LOG_DEBUG("Destroying  State, max_sprite_count_in_sprite_batches {}", m_max_sprite_count_in_sprite_batches);
+}
+
+void D3D11_RendererState::begin_frame(Color color)
+{
+    m_draw_calls_in_frame = 0;
+    m_current_sprite_batch.sprite_commands.clear();
+
+    // hot reloading
+    f64 current_time = platform_get_highresolution_time_seconds();
+    if (current_time - m_file_check_time > 0.5)
+    {
+        m_file_check_time = current_time;
+        auto main_shader_filename = make_shader_filename("shader");
+        u64 last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
+        if (last_shader_write_time != m_last_shader_write_time)
+        {
+            m_last_shader_write_time = last_shader_write_time;
+            D3D_ShaderData shader = m_renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
+
+            bool is_error_shader = true;
+            is_error_shader &= shader.input_layout == m_error_shader.input_layout;
+            is_error_shader &= shader.pixel_shader == m_error_shader.pixel_shader;
+            is_error_shader &= shader.vertex_shader == m_error_shader.vertex_shader;
+            if (!is_error_shader && m_shader.is_valid())
+            {
+                m_shader.input_layout->Release();
+                m_shader.vertex_shader->Release();
+                m_shader.pixel_shader->Release();
+            }
+
+            if (shader.is_valid())
+            {
+                m_shader = shader;
+            }
+            else
+            {
+                m_shader = m_error_shader;
+            }
+        }
+    }
+
+    f32 background_colour[4] = { color.r, color.g, color.b, color.a };
+    m_renderer->m_device_context->ClearRenderTargetView(m_render_target_view, background_colour);
+
+    RECT window_rect;
+    GetWindowRect(m_renderer->m_hwnd, &window_rect);
+    m_renderer->m_window_width = window_rect.right - window_rect.left;
+    m_renderer->m_window_height = window_rect.bottom - window_rect.top;
+    D3D11_VIEWPORT viewport = {0};
+    viewport.Width = (f32)m_renderer->m_window_width;
+    viewport.Height = (f32)m_renderer->m_window_height;
+    m_renderer->m_device_context->RSSetViewports(1, &viewport);
+    m_renderer->m_device_context->OMSetRenderTargets(1, &m_render_target_view, NULL);
+
+    m_renderer->m_device_context->OMSetBlendState(m_blend_state, NULL, 0xffffffff);
+
+    m_renderer->m_device_context->RSSetState(m_rasterizer_state);
+}
+
+void D3D11_RendererState::end_sprite_batch(SpriteBatch& sprite_batch)
+{
+    ASSERT(sprite_batch.is_valid(), "");
+    ASSERT(m_sprite_batches_in_flight > 0, "");
+    
+    m_sprite_batches_in_flight -= 1;
+
+    m_max_sprite_count_in_sprite_batches = std::max(m_max_sprite_count_in_sprite_batches, sprite_batch.sprite_commands.size());
+
+    Texture_D3D11* texture = sprite_batch.texture;
+
+    // Set instance buffer data
+    {
+        D3D11_MAPPED_SUBRESOURCE mapped_subresource;
+        m_renderer->m_device_context->Map(
+            (ID3D11Resource*)m_per_instance_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource);
+        InstanceData* instance_datas = (InstanceData*)mapped_subresource.pData;
+
+        for (usz cmd_idx = 0; cmd_idx < sprite_batch.sprite_commands.size(); ++cmd_idx)
+        {
+            auto& sprite_cmd = sprite_batch.sprite_commands[cmd_idx];
+            Color ctl = sprite_cmd.gradient.top_left;
+            Color ctr = sprite_cmd.gradient.top_right;
+            Color cbl = sprite_cmd.gradient.bottom_left;
+            Color cbr = sprite_cmd.gradient.bottom_right;
+            
+            InstanceData& instance = *(instance_datas + cmd_idx);
+
+            instance.colors[0] = cbl.r, cbl.g, cbl.b, cbl.a;
+            instance.colors[1] = cbr.r, cbr.g, cbr.b, cbr.a;
+            instance.colors[2] = ctr.r, ctr.g, ctr.b, ctr.a;
+            instance.colors[3] = ctl.r, ctl.g, ctl.b, ctl.a;
+            instance.src_rect[0] = sprite_cmd.src.x;
+            instance.src_rect[1] = sprite_cmd.src.y;
+            instance.src_rect[2] = sprite_cmd.src.w;
+            instance.src_rect[3] = sprite_cmd.src.h;
+            instance.dst_rect[0] = sprite_cmd.dst.x;
+            instance.dst_rect[1] = sprite_cmd.dst.y;
+            instance.dst_rect[2] = sprite_cmd.dst.w;
+            instance.dst_rect[3] = sprite_cmd.dst.h;
+            instance.edge_softness = sprite_cmd.edge_softness;
+            instance.corner_radius = sprite_cmd.corner_radius;
+            instance.border_thickness = sprite_cmd.border_thickness;
+        }
+
+        m_renderer->m_device_context->Unmap((ID3D11Resource*)m_per_instance_buffer, 0);
+    }
+
+    m_renderer->m_device_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_renderer->m_device_context->IASetInputLayout(m_shader.input_layout);
+
+    u32 vertex_offsets[2] = { 0, 0 };
+    u32 vertex_strides[2] = { sizeof(VertexData), sizeof(InstanceData) };
+    ID3D11Buffer* vertex_buffers[2] = { m_per_vertex_buffer, m_per_instance_buffer };
+    m_renderer->m_device_context->IASetVertexBuffers(
+        0,
+        2,
+        vertex_buffers,
+        vertex_strides,
+        vertex_offsets);
+
+    m_renderer->m_device_context->IASetIndexBuffer(
+        m_index_buffer, DXGI_FORMAT_R16_UINT, 0);
+
+    // Set constant buffer data
+    {
+        D3D11_MAPPED_SUBRESOURCE mapped_subresource;
+        m_renderer->m_device_context->Map(
+            (ID3D11Resource*)m_constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource);
+
+        ShaderConstants* shader_constants = (ShaderConstants*)mapped_subresource.pData;
+        shader_constants->window_size_x = (f32)m_renderer->m_window_width;
+        shader_constants->window_size_y = (f32)m_renderer->m_window_height;
+        shader_constants->texture_size_x = (f32)texture->width;
+        shader_constants->texture_size_y = (f32)texture->height;
+
+        m_renderer->m_device_context->Unmap(
+            (ID3D11Resource*)m_constant_buffer, 0);
+    }
+
+    m_renderer->m_device_context->VSSetShader(
+        m_shader.vertex_shader, NULL, 0);
+    m_renderer->m_device_context->VSSetConstantBuffers(
+        0, 1, &m_constant_buffer);
+
+    m_renderer->m_device_context->PSSetShader(
+        m_shader.pixel_shader, NULL, 0);
+    m_renderer->m_device_context->PSSetConstantBuffers(
+        0, 1, &m_constant_buffer);
+    m_renderer->m_device_context->PSSetShaderResources(
+        0, 1, &texture->texture_view);
+    m_renderer->m_device_context->PSSetSamplers(
+        0, 1, &texture->sampler_state);
+
+    u32 index_count = 6;
+    u32 instance_count = (u32)sprite_batch.sprite_commands.size();
+    m_renderer->m_device_context->DrawIndexedInstanced(
+        index_count, instance_count,
+        0, 0, 0);
+
+    m_draw_calls_in_frame += 1;
+}
+
+void D3D11_RendererState::end_frame(u64* out_draw_calls)
+{
+    end_sprite_batch(m_current_sprite_batch);
+    m_current_sprite_batch.texture = 0;
+    m_current_sprite_batch.sprite_commands.clear();
+
+    ASSERT(m_sprite_batches_in_flight == 0, "");
+    UINT sync_interval = 0;
+    m_renderer->m_swap_chain->Present(sync_interval, 0);
+    *out_draw_calls = m_draw_calls_in_frame;
+}
+
+TextureHandle D3D11_RendererState::create_texture(u32* pixels, u32 width, u32 height)
+{
+    HRESULT hr;
+
+    Texture_D3D11 &tex = m_textures.emplace_back();
+    tex.width = width;
+    tex.height = height;
+    tex.pixels = pixels;
+
+    D3D11_SAMPLER_DESC sampler_desc = {};
+    sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+
+    m_renderer->m_device->CreateSamplerState(&sampler_desc, &tex.sampler_state);
+
+    D3D11_TEXTURE2D_DESC texture_desc = {0};
+    texture_desc.Width = width;
+    texture_desc.Height = height;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.Usage = D3D11_USAGE_IMMUTABLE;
+    texture_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA texture_subresource_data = {0};
+    texture_subresource_data.pSysMem = pixels;
+    texture_subresource_data.SysMemPitch = width * sizeof(*pixels);
+
+    hr = m_renderer->m_device->CreateTexture2D(
+        &texture_desc, &texture_subresource_data, &tex.texture);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    hr = m_renderer->m_device->CreateShaderResourceView(
+        (ID3D11Resource*)tex.texture, NULL, &tex.texture_view);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    return &tex;
+}
+
+TextureHandle D3D11_RendererState::create_texture_from_file(const char* filename)
+{
+    int req_comps = 4;
+    int width, height, num_comps;
+    u8* pixels = stbi_load(filename, &width, &height, &num_comps, req_comps);
+    TextureHandle result = create_texture((u32*)pixels, width, height);
+    stbi_image_free(pixels);
+    return result;
+}
+
+Texture_D3D11* D3D11_RendererState::create_font_texture(u8 const* pixels, u32 width, u32 height)
+{
+    usz pixels_len = width * height;
+    Vector<u32> gpu_pixels(pixels_len);
+
+    u32 r = 0xFF;
+    u32 g = 0xFF;
+    u32 b = 0xFF;
+    for (usz pixel_idx = 0; pixel_idx < pixels_len; ++pixel_idx)
+    {
+        u32 a = (u32)pixels[pixel_idx];
+        u32 pixel = (a << 24) | (b << 16) | (g << 8) | (r << 0);
+        gpu_pixels[pixel_idx] = pixel;
+    }
+
+    Texture_D3D11* result = (Texture_D3D11*)create_texture(gpu_pixels.data(), width, height);
+    return result;
+}
+
+void D3D11_RendererState::draw_rect_pro(Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient)
+{
+    Rect src;
+    src.x = 0;
+    src.y = 0;
+    src.w = (f32)m_white_texture->width;
+    src.h = (f32)m_white_texture->height;
+    draw_sprite_pro(m_white_texture, src, dst, edge_softness, corner_radius, border_thickness, gradient);
+}
+
+void D3D11_RendererState::draw_sprite_tint(TextureHandle texture, Rect src, Rect dst, Color tint_color)
+{
+    ColorGradient gradient = {
+        tint_color,
+        tint_color,
+        tint_color,
+        tint_color,
+    };
+    draw_sprite_pro(texture, src, dst, 0.f, 0.f, 0.f, gradient);
+}
+
+void D3D11_RendererState::draw_sprite(TextureHandle texture, Rect src, Rect dst)
+{
+    draw_sprite_tint(texture, src, dst, Color{ 1, 1, 1, 1 });
+}
+
+void D3D11_RendererState::draw_sprite_pro(TextureHandle texture, Rect src, Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient)
+{
+    // TODO: More intelligent batching? now it just batches if you draw the same texture multiple times in a row,
+    // but maybe sometimes it could batch even if the user doesn't know to do that 
+
+    SpriteBatch &batch = m_current_sprite_batch;
+
+    if (batch.texture != (Texture_D3D11*)texture || batch.sprite_commands.size() >= MAX_COMMANDS_PER_SPRITE_BATCH) {
+        if (batch.texture) {
+            end_sprite_batch(batch);
+        }
+        batch.sprite_commands.clear();
+        m_sprite_batches_in_flight += 1;
+        batch.texture = (Texture_D3D11*)texture;
+    }
+    
+    ASSERT(batch.sprite_commands.size() + 1 <= MAX_COMMANDS_PER_SPRITE_BATCH, "");
+    SpriteDrawCmd &cmd = batch.sprite_commands.emplace_back();
+    cmd.gradient = gradient;
+    cmd.src = src;
+    cmd.dst = dst;
+    cmd.edge_softness = edge_softness;
+    cmd.corner_radius = corner_radius;
+    cmd.border_thickness = border_thickness;
+}
+
+FontHandle D3D11_RendererState::create_font(const char* font_file, f32 size)
+{
+   Font_D3D11 *result = NULL;
+
+   auto font_data = read_entire_file_as_bytes(font_file);
+   ASSERT_UNCHECKED(!font_data.empty(), "");
+
+   f32 ascent;
+   f32 descent;
+   f32 line_gap;
+   stbtt_GetScaledFontVMetrics(font_data.data(), 0, size, &ascent, &descent, &line_gap);
+
+   // ASCII range
+   u32 first_char = 0;
+   u32 last_char = 255;
+   u32 num_chars = last_char - first_char;
+
+   // TODO: Adjust atlas size somehow based on font size etc?
+   u32 width = 512;
+   u32 height = 512;
+   u32 stride = width;
+
+   Vector<u8> pixels(width * height);
+
+   stbtt_pack_context pc;
+   if (stbtt_PackBegin(&pc, pixels.data(), width, height, stride, 1, 0) != 0)
+   {
+       Vector<stbtt_packedchar> temp_packed_chars(num_chars);
+       if (stbtt_PackFontRange(&pc, font_data.data(), 0, size, first_char, num_chars, temp_packed_chars.data()) != 0)
+       {
+           result = &m_fonts.emplace_back();
+           
+           result->packed_chars = std::move(temp_packed_chars);
+
+           result->first_char = first_char;
+           result->last_char = last_char;
+           result->num_chars = num_chars;
+
+           result->ascent = ascent;
+           result->descent = descent;
+           result->line_gap = line_gap;
+
+           result->atlas = create_font_texture(pixels.data(), width, height);
+       }
+       else
+       {
+           LOG_ERROR("stbtt_PackFontRange failed");
+       }
+
+       stbtt_PackEnd(&pc);
+   }
+   else
+   {
+       LOG_ERROR("stbtt_PackBegin failed");
+   }
+
+   return (FontHandle)result;
+}
+
+void D3D11_RendererState::draw_glyph_and_advance(
+    Font_D3D11 *font,
+    u32 glyph,
+    f32* x, f32* y,
+    Color tint_color)
+{
+    stbtt_aligned_quad quad;
+    int align_to_integer = true;
+    stbtt_GetPackedQuad(font->packed_chars.data(), font->atlas->width, font->atlas->height, font_char_index(font, glyph), x, y, &quad, align_to_integer);
+
+    Rect source;
+    {
+        f32 x0 = quad.s0 * font->atlas->width;
+        f32 y0 = quad.t0 * font->atlas->height;
+        f32 x1 = quad.s1 * font->atlas->width;
+        f32 y1 = quad.t1 * font->atlas->height;
+
+        source.x = x0;
+        source.y = y0;
+        source.w = (x1 - x0);
+        source.h = (y1 - y0);
+    }
+
+    Rect dest;
+    {
+        f32 x0 = quad.x0;
+        f32 x1 = quad.x1;
+        f32 y0 = quad.y0;
+        f32 y1 = quad.y1;
+
+        dest.x = x0;
+        dest.y = y0;
+        dest.w = (x1 - x0);
+        dest.h = (y1 - y0);
+    }
+
+    draw_sprite_tint((TextureHandle)font->atlas, source, dest, tint_color);
+}
+
+void D3D11_RendererState::draw_text_tint(FontHandle font_, u8* text, usz text_len, f32 x, f32 y, Color tint_color)
+{
+    Font_D3D11* font = (Font_D3D11*)font_;
+    f32 line_begin_x = x;
+    y += font->ascent + font->descent; // I want text to have top-left as origin
+    for (usz text_index = 0; text_index < text_len; ++text_index)
+    {
+        // TODO: UTF-8
+        u32 ch = text[text_index];
+        if (ch == '\r')
+        {
+            continue;
+        }
+        if (ch == '\n')
+        {
+            x = line_begin_x;
+            y += font_y_advance(font);
+            continue;
+        }
+        if (ch == '\t') // tab as 4 spaces
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                draw_glyph_and_advance(font, ' ', &x, &y, tint_color);
+            }
+            continue;
+        }
+        // else just draw the thing
+        draw_glyph_and_advance(font, ch, &x, &y, tint_color);
+    }
+}
+
+void D3D11_RendererState::draw_text(FontHandle font_, u8* text, usz text_len, f32 x, f32 y)
+{
+    draw_text_tint(font_, text, text_len, x, y, Color{ 1, 1, 1, 1 });
+}
+
+::core::own_ptr<Renderer> create_renderer()
+{
+    HINSTANCE instance = GetModuleHandle(0);
+
+    PlatformWindowHandle window_handle = platform_get_native_window_handle();
+    HWND window = (HWND)window_handle.nwh;
+    HDC hdc = GetDC(window);
+    if (!hdc) {
+        d3d11_print_last_error("GetDC");
+        return nullptr;
+    }
+
+    core::own_ptr<D3D11_Renderer> renderer;
+
+    bool result = false;
+    renderer = core::make_owned<D3D11_Renderer>();
+
+    renderer->m_hdc = hdc;
+    renderer->m_hinstance = instance;
+    renderer->m_hwnd = window;
+
+    DXGI_SWAP_CHAIN_DESC swap_chain_descr = {};
+    swap_chain_descr.BufferDesc.RefreshRate.Numerator = 0;
+    swap_chain_descr.BufferDesc.RefreshRate.Denominator = 1;
+    swap_chain_descr.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    swap_chain_descr.SampleDesc.Count = 1;
+    swap_chain_descr.SampleDesc.Quality = 0;
+    swap_chain_descr.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_chain_descr.BufferCount = 1;
+    swap_chain_descr.OutputWindow = renderer->m_hwnd;
+    swap_chain_descr.Windowed = true;
+
+    HRESULT hr;
+
+    D3D_FEATURE_LEVEL feature_level;
+    UINT flags = D3D11_CREATE_DEVICE_SINGLETHREADED;
+#if defined(IS_DEBUG_BUILD)
+    flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+    hr = D3D11CreateDeviceAndSwapChain(
+        NULL,
+        D3D_DRIVER_TYPE_HARDWARE,
+        NULL,
+        flags,
+        NULL,
+        0,
+        D3D11_SDK_VERSION,
+        &swap_chain_descr,
+        &renderer->m_swap_chain,
+        &renderer->m_device,
+        &feature_level,
+        &renderer->m_device_context);
+    ASSERT_UNCHECKED(S_OK == hr && renderer->m_swap_chain && renderer->m_device && renderer->m_device_context, "");
+
+#if defined(IS_INTERNAL_BUILD) && IS_INTERNAL_BUILD
+    // Set up debug layer to break on D3D11 errors
+    ID3D11Debug* d3d_debug = NULL;
+
+    renderer->m_device->QueryInterface(__uuidof(ID3D11Debug), (void**)&d3d_debug);
+
+    if (d3d_debug)
+    {
+        ID3D11InfoQueue* d3d_info_queue = NULL;
+        hr = d3d_debug->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&d3d_info_queue);
+        if (SUCCEEDED(hr))
+        {
+            d3d_info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, true);
+            d3d_info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, true);
+            d3d_info_queue->Release();
+        }
+        d3d_debug->Release();
+    }
+#endif
+
+    return renderer;
+}
+
+D3D11_Renderer::~D3D11_Renderer()
+{
+    m_swap_chain->Release();
+    m_device_context->Release();
+    m_device->Release();
+}
+
+}
