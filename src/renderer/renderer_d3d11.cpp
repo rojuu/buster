@@ -147,7 +147,7 @@ public:
     FontHandle create_font(const char* font_file, f32 size) override;
 
     void draw_sprite(const TextureHandle& texture, Rect src, Rect dst, Color tint_color) override;
-    void draw_text(const FontHandle& font, span<char> text, f32 x, f32 y, Color tint_color) override;
+    void draw_text(const FontHandle& font, string_view text, f32 x, f32 y, Color tint_color) override;
 
     void end_sprite_batch(D3D11_SpriteBatch& sprite_batch);
     TextureHandle create_font_texture(non_null<u8> pixels, u32 width, u32 height);
@@ -694,7 +694,7 @@ void D3D11_Renderer::draw_glyph_and_advance(
     draw_sprite(font->atlas, source, dest, tint_color);
 }
 
-void D3D11_Renderer::draw_text(const FontHandle& font_, span<char> text, f32 x, f32 y, Color tint_color)
+void D3D11_Renderer::draw_text(const FontHandle& font_, string_view text, f32 x, f32 y, Color tint_color)
 {
     auto font = static_pointer_cast<D3D11_Font>(font_);
     

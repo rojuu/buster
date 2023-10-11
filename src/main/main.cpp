@@ -101,6 +101,7 @@ public:
 
 			renderer->begin_frame({ 0.f, 0.f, 0.f, 1.f });
 
+			renderer->draw_text(roboto_mono, "what is going on", 30, 30);
 			renderer->draw_text(roboto_mono, info_text, 10, 10);
 #if 0
 			{
