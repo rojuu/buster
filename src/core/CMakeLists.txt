@@ -7,15 +7,15 @@ add_library(core STATIC
 
     "def.h"   
     "simd.h"
-    "typetraits.h"
+    
     "utils.h"
     "utils.cpp"
-    "own_ptr.h"
+    "smart_ptr.h"
     "platform.h"
     
     "platform_win32.cpp"
     "platform_sdl2.cpp"
- "platform_sdl2.h" "containers/list.h")
+ "platform_sdl2.h" "containers/list.h" "containers/span.h" "non_null.h" "out_ptr.h" "type_traits.h")
 target_include_directories(core PUBLIC
     ${CMAKE_SOURCE_DIR}/src/
     ${CMAKE_SOURCE_DIR}/src/core

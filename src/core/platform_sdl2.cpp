@@ -6,7 +6,7 @@
 
 #include "platform_sdl2.h"
 
-using namespace core::utils;
+using namespace core;
 
 static SDL_Window* g_window_handle = 0;
 

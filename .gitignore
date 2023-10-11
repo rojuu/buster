@@ -1,4 +1,6 @@
 /out
 /.vs
+/.vscode
 /build
 /CMakeUserPresets.json
+*.rdbg

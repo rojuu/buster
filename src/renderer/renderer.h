@@ -3,7 +3,10 @@
 #pragma once
 
 #include "def.h"
-#include "own_ptr.h"
+#include "containers/span.h"
+#include "non_null.h"
+#include "out_ptr.h"
+#include "smart_ptr.h"
 
 namespace renderer {
 
@@ -18,46 +21,32 @@ struct Rect
     f32 w{}, h{};
 };
 
-struct Texture
+struct RendererResource {
+    RendererResource() = default;
+    virtual ~RendererResource() = default;
+
+    RendererResource(const RendererResource&) = delete;
+    RendererResource& operator=(const RendererResource&) = delete;
+    RendererResource(RendererResource&&) = delete;
+    RendererResource& operator=(RendererResource&&) = delete;
+};
+
+struct Texture : RendererResource
 {
     u32* pixels{};
     u32 width{};
     u32 height{};
 };
 
-struct Font;
-typedef Texture* TextureHandle;
-typedef Font* FontHandle;
-
-struct ColorGradient {
-    Color top_left;
-    Color top_right;
-    Color bottom_left;
-    Color bottom_right;
+struct Font : RendererResource
+{
 };
 
-class RendererState {
-public:
-    RendererState() = default;
-    virtual ~RendererState() = default;
+template<typename T>
+using RendererResourceHandle = shared_ptr<T>;
 
-    RendererState(const RendererState&) = delete;
-    RendererState& operator=(const RendererState&) = delete;
-    RendererState(RendererState&&) = delete;
-    RendererState& operator=(RendererState&&) = delete;
-
-    virtual void begin_frame(Color color) = 0;
-    virtual void end_frame(u64* out_draw_calls) = 0;
-    virtual TextureHandle create_texture(u32* pixels, u32 width, u32 height) = 0;
-    virtual TextureHandle create_texture_from_file(const char* filename) = 0;
-    virtual void draw_rect_pro(Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) = 0;
-    virtual void draw_sprite_pro(TextureHandle texture, Rect src, Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) = 0;
-    virtual void draw_sprite_tint(TextureHandle texture, Rect src, Rect dst, Color tint_color) = 0;
-    virtual void draw_sprite(TextureHandle texture, Rect src, Rect dst) = 0;
-    virtual FontHandle create_font(const char* font_file, f32 size) = 0;
-    virtual void draw_text_tint(FontHandle font, u8* text, usz text_len, f32 x, f32 y, Color tint_color) = 0;
-    virtual void draw_text(FontHandle font, u8* text, usz text_len, f32 x, f32 y) = 0;
-};
+using TextureHandle = RendererResourceHandle<Texture>;
+using FontHandle = RendererResourceHandle<Font>;
 
 class Renderer {
 public:
@@ -69,10 +58,18 @@ public:
     Renderer(Renderer&&) = delete;
     Renderer &operator=(Renderer&&) = delete;
 
-    virtual core::own_ptr<RendererState> create_state() = 0;
+    virtual void begin_frame(Color clear_color) = 0;
+    virtual void end_frame(bool use_vsync, out_ptr<u64> out_draw_calls) = 0;
+
+    virtual TextureHandle create_texture(non_null<u32> pixels, u32 width, u32 height) = 0;
+    virtual TextureHandle create_texture_from_file(non_null<const char> filename) = 0;
+    virtual FontHandle create_font(non_null<const char> font_file, f32 size) = 0;
+
+    virtual void draw_sprite(const TextureHandle &texture, Rect src, Rect dst, Color tint_color = {1,1,1,1}) = 0;
+    virtual void draw_text(const FontHandle &font, span<u8> text, f32 x, f32 y, Color tint_color = {1,1,1,1}) = 0;
 };
 
-::core::own_ptr<Renderer> create_renderer();
+::core::unique_ptr<Renderer> create_renderer();
 
 }
 

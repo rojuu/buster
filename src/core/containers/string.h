@@ -4,8 +4,10 @@
 
 namespace core::containers {
 
-using String = std::string;
+using std::basic_string;
+using std::string;
 
 }
 
-using core::containers::String;
+using core::containers::basic_string;
+using core::containers::string;

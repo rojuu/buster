@@ -1,6 +1,7 @@
 #include "core/def.h"
 #include "core/utils.h"
 #include "core/containers/common.h"
+#include "core/string_builder.h"
 
 #include "core/platform.h"
 #include "core/platform_sdl2.h"
@@ -9,7 +10,7 @@
 
 #include "SDL.h"
 
-using namespace core::utils;
+using namespace core;
 using namespace renderer;
 
 // ImGuiKey sdlk_to_imgui(SDL_Keycode keycode);
@@ -18,7 +19,12 @@ class Game {
 public:
 	int run()
 	{
-		core::utils::logger_init();
+		if (!set_cwd_to_run_dir()) {
+			LOG_ERROR("Could not find run_dir");
+			return EXIT_FAILURE;
+		}
+
+		core::logger_init();
 
 		if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
 			LOG_CRITICAL("Unable to initialize SDL: {}", SDL_GetError());
@@ -49,19 +55,14 @@ public:
 			LOG_ERROR("Failed to create renderer");
 			return EXIT_FAILURE;
 		}
-		auto renderer_state = renderer->create_state();
-		if (!renderer_state) {
-			LOG_ERROR("Failed to create renderer state");
-			return EXIT_FAILURE;
-		}
 		auto time_last = platform_get_highresolution_time_seconds();
-		auto texture = renderer_state->create_texture_from_file("C:/Users/roju2/OneDrive/Kuvat/duck.jpg");
-		auto texture2 = renderer_state->create_texture_from_file("C:/Users/roju2/OneDrive/Kuvat/sloth.jpg");
+		auto texture = renderer->create_texture_from_file("images/duck.jpg");
+		auto texture2 = renderer->create_texture_from_file("images/sloth.jpg");
 
-		auto roboto_mono = renderer_state->create_font("C:/Users/roju2/p/foster/run_dir/fonts/RobotoMono-Regular.ttf", 18.f);
+		auto roboto_mono = renderer->create_font("fonts/RobotoMono-Regular.ttf", 18.f);
 
 		u64 draw_calls_prev_frame = 0;
-		String info_text;
+		string info_text_str;
 		f64 last_frame_test = 0;
 		usz frame_count = 0;
 		bool quit = false;
@@ -94,13 +95,14 @@ public:
 				frame_count = 0;
 				last_frame_test = time_now;
 
-				info_text = fmt::format("FPS: {}, Frame time: {}, draw_calls {}",
+				info_text_str = fmt::format("FPS: {}, Frame time: {}, draw_calls {}",
 					fps, delta_time * 1.e3, draw_calls_prev_frame);
 			}
 
-			renderer_state->begin_frame({ 0.f, 0.f, 0.f, 1.f });
+			renderer->begin_frame({ 0.f, 0.f, 0.f, 1.f });
 
-			renderer_state->draw_text(roboto_mono, (u8*)info_text.c_str(), info_text.size(), 10, 10);
+			span<u8> info_text{ (u8*)info_text_str.data(), info_text_str.size() };
+			renderer->draw_text(roboto_mono, info_text, 10, 10);
 
 			{
 				Rect src = { 0 };
@@ -111,7 +113,7 @@ public:
 				dst.y = 100.f;
 				dst.w = 256.f;
 				dst.h = 256.f;
-				renderer_state->draw_sprite(texture, src, dst);
+				renderer->draw_sprite(texture, src, dst);
 			}
 
 			{
@@ -123,49 +125,67 @@ public:
 				dst.y = 100.f;
 				dst.w = 256.f;
 				dst.h = 256.f;
-				renderer_state->draw_sprite(texture2, src, dst);
+				renderer->draw_sprite(texture2, src, dst);
 			}
 
-			{
-				ColorGradient gradient = {};
-				gradient.top_left = {1,1,0,1};
-				gradient.top_right = {0,1,0,1};
-				gradient.bottom_left = {0,0,0,1};
-				gradient.bottom_right = { 1,0,0,1 };
-				Rect dst = { 0 };
-
-				Rect src = { 0 };
-				src.w = (f32)texture2->width;
-				src.h = (f32)texture2->height;
-				dst.x = 114.f;
-				dst.y = 526.f;
-				dst.w = 100.f;
-				dst.h = 100.f;
-				renderer_state->draw_sprite(texture2, src, dst);
-
-				dst.x = 100.f;
-				dst.y = 512.f;
-				dst.w = 128.f;
-				dst.h = 128.f;
-				f32 edge_softness = 3.f;
-				f32 border_radius = 16.f;
-				f32 border_thickness = 16.f;
-				renderer_state->draw_rect_pro(dst, edge_softness, border_radius, border_thickness, gradient);
-			}
-			renderer_state->end_frame(&draw_calls_prev_frame);
+			bool use_vsync = false;
+			renderer->end_frame(use_vsync, &draw_calls_prev_frame);
 		}
 		return EXIT_SUCCESS;
 	}
 
-	Pair<int, int> get_window_size()
+	pair<int, int> get_window_size()
 	{
-		Pair<int, int> size{};
+		pair<int, int> size{};
 		SDL_GetWindowSize(m_window, &size.first, &size.second);
 		return size;
 	}
 
+
+	bool set_cwd_to_run_dir()
+	{
+		bool run_dir_valid = false;
+		auto cwd = platform_get_current_working_directory();
+		if (cwd.empty()) {
+			return false;
+		}
+
+		string_builder run_dir_buf;
+		run_dir_buf.reserve(4);
+		run_dir_buf.append(cwd);
+		if (run_dir_buf[run_dir_buf.size() - 1] != PATH_DELIMITER) {
+			run_dir_buf.append(PATH_DELIMITER);
+		}
+		auto run_dir_postfix = string("run_dir") + PATH_DELIMITER;
+		for (usz iterations = 0; iterations < 30; ++iterations) 
+		{
+			run_dir_buf.append(run_dir_postfix);
+			if (platform_file_exists(run_dir_buf.c_str()))
+			{
+				run_dir_valid = true;
+				break;
+			}
+			else
+			{
+				run_dir_buf.resize(run_dir_buf.size() - run_dir_postfix.size());
+				for (int i = (int)run_dir_buf.size() - 2; i >= 0; --i) {
+					run_dir_buf.resize(i+1);
+					if (run_dir_buf[i] == PATH_DELIMITER) {
+						break;
+					}
+				}
+			}
+		}
+		if (run_dir_valid) {
+			platform_set_current_working_directory(run_dir_buf.c_str());
+		}
+
+		return run_dir_valid;
+	}
+
+
 private:
-	SDL_Window* m_window{ nullptr };
+	SDL_Window* m_window{};
 };
 
 int main(int argc, char **argv)
@@ -309,39 +329,4 @@ ImGuiKey sdlk_to_imgui(SDL_Keycode keycode)
 	}
 	return ImGuiKey_None;
 }
-#endif
-
-#if 0
-#include "def.h"
-#include "platform.h"
-#include "renderer.h"
-#include "utils.h"
-
-#include "utils.c"
-
-struct Game
-{
-	RendererState* renderer_state;
-
-	TextureHandle texture;
-	TextureHandle texture2;
-	FontHandle roboto_mono;
-
-	f64 time_last;
-	f64 last_frame_test;
-	u32 frame_count;
-
-	char info_text[1024];
-	s32 info_text_size;
-
-	u64 draw_calls_prev_frame;
-};
-
-#define GAME_MEMORY_SIZE (256*MiB)
-
-DLL_EXPORT UPDATE_AND_RENDER(update_and_render)
-{
-	
-}
-
 #endif

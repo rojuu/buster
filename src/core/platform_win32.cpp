@@ -75,12 +75,13 @@ void platform_set_current_working_directory(const char* cwd)
     ASSERT(res, "");
 }
 
-String platform_get_current_working_directory()
+string platform_get_current_working_directory()
 {
-    String buffer;
+    string buffer;
     auto buffer_len = GetCurrentDirectoryA(0, nullptr);
+    buffer_len = buffer_len > 0 ? buffer_len - 1 : 0;
     buffer.resize((usz)buffer_len);
-    GetCurrentDirectoryA((DWORD)buffer.size(), buffer.data());
+    GetCurrentDirectoryA((DWORD)buffer.size()+1, buffer.data());
     return buffer;
 }
 

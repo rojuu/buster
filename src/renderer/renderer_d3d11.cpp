@@ -32,7 +32,7 @@
 #undef min
 #undef max
 
-using namespace core::utils;
+using namespace core;
 using namespace core::containers;
 
 namespace renderer {
@@ -47,7 +47,6 @@ static void d3d11_print_last_error(const char* msg)
 }
 
 
-
 struct D3D_ShaderData
 {
     ID3D11VertexShader* vertex_shader{};
@@ -60,18 +59,27 @@ struct D3D_ShaderData
     }
 };
 
-struct Texture_D3D11 : public Texture
+struct D3D11_Texture : public Texture
 {
+    D3D11_Texture() = default;
+
+    ~D3D11_Texture()
+    {
+        if (sampler_state) sampler_state->Release();
+        if (texture) texture->Release();
+        if (texture_view) texture_view->Release();
+    }
+
     ID3D11SamplerState* sampler_state{};
     ID3D11Texture2D* texture{};
     ID3D11ShaderResourceView* texture_view{};
 };
 
-struct Font_D3D11
+struct D3D11_Font : public Font
 {
-    Texture_D3D11* atlas{};
+    shared_ptr<D3D11_Texture> atlas{};
 
-    Vector<stbtt_packedchar> packed_chars;
+    vector<stbtt_packedchar> packed_chars;
     u32 num_chars{};
     u32 first_char{};
     u32 last_char{};
@@ -79,26 +87,35 @@ struct Font_D3D11
     f32 ascent{};
     f32 descent{};
     f32 line_gap{};
+
+    u32 char_index(u32 character)
+    {
+        u32 result = character - first_char;
+        return result;
+    }
+
+    f32 y_advance()
+    {
+        f32 result = ascent - descent + line_gap;
+        return result;
+    }
 };
 
 struct SpriteDrawCmd
 {
     Rect src{};
     Rect dst{};
-    ColorGradient gradient{};
-    f32 edge_softness{};
-    f32 corner_radius{};
-    f32 border_thickness{};
+    Color color{};
 };
 
-struct SpriteBatch
+struct D3D11_SpriteBatch
 {
-    Texture_D3D11* texture{};
-    Vector<SpriteDrawCmd> sprite_commands;
+    shared_ptr<D3D11_Texture> texture{};
+    vector<SpriteDrawCmd> sprite_commands;
 
     bool is_valid()
     {
-        bool result = !(sprite_commands.empty() && texture == 0);
+        bool result = !(sprite_commands.empty() && texture == nullptr);
         return result;
     }
 };
@@ -110,14 +127,28 @@ class D3D11_Renderer : public Renderer {
 public:
     ~D3D11_Renderer();
 
-    virtual core::own_ptr<RendererState> create_state();
+    void begin_frame(Color clear_color) override;
+    void end_frame(bool use_vsync, out_ptr<u64> out_draw_calls) override;
 
+    TextureHandle create_texture(non_null<u32> pixels, u32 width, u32 height) override;
+    TextureHandle create_texture_from_file(non_null<const char> filename) override;
+    FontHandle create_font(const char* font_file, f32 size) override;
+
+    void draw_sprite(const TextureHandle& texture, Rect src, Rect dst, Color tint_color) override;
+    void draw_text(const FontHandle& font, span<u8> text, f32 x, f32 y, Color tint_color) override;
+
+    void end_sprite_batch(D3D11_SpriteBatch& sprite_batch);
+    TextureHandle create_font_texture(non_null<u8> pixels, u32 width, u32 height);
+    void draw_glyph_and_advance(const shared_ptr<D3D11_Font> font, u32 glyph, f32* x, f32* y, Color tint_color);
+    
+    
     D3D_ShaderData create_shader(
         const char* shader_filename,
         D3D11_INPUT_ELEMENT_DESC const* input_elem_descs,
         usz input_elem_descs_count,
         D3D_SHADER_MACRO const* defines);
 
+public:
     HDC m_hdc{};
     HINSTANCE m_hinstance{};
     HWND m_hwnd{};
@@ -126,50 +157,12 @@ public:
     ID3D11DeviceContext* m_device_context{};
     IDXGISwapChain* m_swap_chain{};
 
+    D3D11_SpriteBatch m_current_sprite_batch;
+
     u32 m_window_width{};
     u32 m_window_height{};
-};
-
-
-class D3D11_RendererState : public RendererState
-{
-public:
-    explicit D3D11_RendererState(D3D11_Renderer* renderer)
-        : m_renderer(renderer)
-    {
-    }
-
-    ~D3D11_RendererState() override;
-
-    void begin_frame(Color color) override;
-    void end_frame(u64* out_draw_calls) override;
-    TextureHandle create_texture(u32* pixels, u32 width, u32 height) override;
-    TextureHandle create_texture_from_file(const char* filename) override;
-    void draw_rect_pro(Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) override;
-    void draw_sprite_pro(TextureHandle texture, Rect src, Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient) override;
-    void draw_sprite_tint(TextureHandle texture, Rect src, Rect dst, Color tint_color) override;
-    void draw_sprite(TextureHandle texture, Rect src, Rect dst) override;
-    FontHandle create_font(const char* font_file, f32 size) override;
-    void draw_text_tint(FontHandle font, u8* text, usz text_len, f32 x, f32 y, Color tint_color) override;
-    void draw_text(FontHandle font, u8* text, usz text_len, f32 x, f32 y) override;
-
-    void end_sprite_batch(SpriteBatch& sprite_batch);
-    Texture_D3D11* create_font_texture(u8 const* pixels, u32 width, u32 height);
-    void draw_glyph_and_advance(Font_D3D11* font, u32 glyph, f32* x, f32* y, Color tint_color);
-
-
-    D3D11_Renderer* m_renderer{};
-
-    usz m_sprite_batches_in_flight{};
-    usz m_max_sprite_count_in_sprite_batches{};
 
     u64 m_draw_calls_in_frame{};
-
-    SpriteBatch m_current_sprite_batch{};
-
-    List<Texture_D3D11> m_textures;
-
-    List<Font_D3D11> m_fonts;
 
     TextureHandle m_white_texture{};
 
@@ -191,18 +184,6 @@ public:
     ID3D11Buffer* m_index_buffer{};
 };
 
-static u32 font_char_index(Font_D3D11*font, u32 character)
-{
-    u32 result = character - font->first_char;
-    return result;
-}
-
-static f32 font_y_advance(Font_D3D11* font)
-{
-    f32 result = font->ascent - font->descent + font->line_gap;
-    return result;
-}
-
 struct VertexData
 {
     f32 x{}, y{};
@@ -211,19 +192,16 @@ struct VertexData
 
 struct InstanceData
 {
-    f32 colors[4*4]{};
+    f32 color[4]{};
     f32 src_rect[4]{};
     f32 dst_rect[4]{};
-    f32 edge_softness{};
-    f32 corner_radius{};
-    f32 border_thickness{};
 };
 
 // We allocate one large buffer for vertices needed in drawing. We cannot have more draw
 // commands in a batch than can fit into that buffer.
-// For 6*MiB buffer we can have 58254 commands per sprite batch assuming sizeof(InstanceData) is 104
-#define MAX_COMMANDS_PER_SPRITE_BATCH ((6 * MiB) / sizeof(InstanceData))
-static_assert(sizeof(InstanceData) == 108); // This is an assumption in the comment above
+// For 6*MiB buffer we can have 131072 commands per sprite batch assuming sizeof(InstanceData) is 48
+static constexpr usz MAX_COMMANDS_PER_SPRITE_BATCH = ((6 * MiB) / sizeof(InstanceData));
+static_assert(sizeof(InstanceData) == 48); // This is an assumption in the comment above
 
 struct ShaderConstants
 {
@@ -352,153 +330,15 @@ static const D3D11_INPUT_ELEMENT_DESC shader_input_element_descs[] = {
     { "BRDT", 0, DXGI_FORMAT_R32_FLOAT, 1, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
 };
 
-static String make_shader_filename(const char *shader_name)
+static string make_shader_filename(const char *shader_name)
 {
-    String result = String("C:/Users/roju2/p/foster/run_dir/") 
-        + String("shaders/") + shader_name + String(".hlsl");
+    string result = string("shaders/") + shader_name + string(".hlsl");
     return result;
 }
 
-core::own_ptr<RendererState> D3D11_Renderer::create_state()
-{
-    auto state = core::make_owned<D3D11_RendererState>(this);
-
-    HRESULT hr;
-
-    ID3D11Texture2D* framebuffer;
-    hr = m_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)& framebuffer);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-    hr = m_device->CreateRenderTargetView(
-        (ID3D11Resource*)framebuffer,
-        0,
-        &state->m_render_target_view);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-    framebuffer->Release();
-
-    D3D11_RASTERIZER_DESC rasterizer_desc = {};
-    rasterizer_desc.FillMode = D3D11_FILL_SOLID;
-    rasterizer_desc.CullMode = D3D11_CULL_BACK;
-    rasterizer_desc.FrontCounterClockwise = true;
-    //rasterizer_desc.MultisampleEnable = true;
-    //rasterizer_desc.AntialiasedLineEnable = true;
-    hr = m_device->CreateRasterizerState(&rasterizer_desc, &state->m_rasterizer_state);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-
-    D3D11_BLEND_DESC blend_desc = {};
-    blend_desc.RenderTarget[0].BlendEnable = true;
-    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_SRC_ALPHA;
-    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D10_COLOR_WRITE_ENABLE_ALL;
-    hr = m_device->CreateBlendState(&blend_desc, &state->m_blend_state);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-
-    D3D_SHADER_MACRO error_shader_defines[2] = {}; // +1 for nul termination
-    error_shader_defines[0].Name = "ERROR_SHADER";
-    error_shader_defines[0].Definition = "1";
-    auto main_shader_filename = make_shader_filename("shader");
-    state->m_error_shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), error_shader_defines);
-    ASSERT_UNCHECKED(state->m_error_shader.is_valid(), "");
-
-    state->m_shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
-    if (!state->m_shader.is_valid())
-    {
-        state->m_shader = state->m_error_shader;
-    }
-
-    state->m_last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
-    state->m_file_check_time = platform_get_highresolution_time_seconds();
-
-    static const VertexData vertices[] = {
-        // pos           tex
-        -1.f, -1.f,      0, 1,
-         1.f, -1.f,      1, 1,
-         1.f,  1.f,      1, 0,
-        -1.f,  1.f,      0, 0,
-    };
-    D3D11_BUFFER_DESC per_vertex_buffer_desc = {};
-    per_vertex_buffer_desc.ByteWidth = sizeof(vertices);
-    per_vertex_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
-    per_vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA per_vertex_sr = {};
-    per_vertex_sr.pSysMem = vertices;
-    hr = m_device->CreateBuffer(
-        &per_vertex_buffer_desc,
-        &per_vertex_sr,
-        &state->m_per_vertex_buffer);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-
-    D3D11_BUFFER_DESC per_instance_buffer_desc = {};
-    per_instance_buffer_desc.ByteWidth = sizeof(InstanceData) * MAX_COMMANDS_PER_SPRITE_BATCH;
-    per_instance_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-    per_instance_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    per_instance_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    hr = m_device->CreateBuffer(
-        &per_instance_buffer_desc,
-        NULL,
-        &state->m_per_instance_buffer);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-
-    static const u16 indices[] = {
-        0, 1, 2,
-        0, 2, 3,
-    };
-    D3D11_BUFFER_DESC index_buffer_desc = {0};
-    index_buffer_desc.ByteWidth = sizeof(indices);
-    index_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
-    index_buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA index_sr_data = {0};
-    index_sr_data.pSysMem = indices;
-    hr = m_device->CreateBuffer(
-        &index_buffer_desc,
-        &index_sr_data,
-        &state->m_index_buffer);
-    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
-
-    D3D11_BUFFER_DESC constant_buffer_desc = {0};
-    constant_buffer_desc.ByteWidth = (UINT)align_forwards(sizeof(ShaderConstants), 16);
-    constant_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-    constant_buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    constant_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    m_device->CreateBuffer(&constant_buffer_desc, NULL, &state->m_constant_buffer);
-
-    {
-        u32 pixels[1] = { ~0u };
-        state->m_white_texture = state->create_texture(pixels, 1, 1);
-    }
-  
-    return state;
-}
-
-D3D11_RendererState::~D3D11_RendererState()
-{
-    for (auto &texture : m_textures)
-    {
-        texture.sampler_state->Release();
-        texture.texture->Release();
-        texture.texture_view->Release();
-    }
-
-    m_blend_state->Release();
-    m_shader.vertex_shader->Release();
-    m_shader.pixel_shader->Release();
-    m_shader.input_layout->Release();
-    m_constant_buffer->Release();
-    m_per_vertex_buffer->Release();
-    m_per_instance_buffer->Release();
-    m_render_target_view->Release();
-    m_rasterizer_state->Release();
-
-    LOG_DEBUG("Destroying  State, max_sprite_count_in_sprite_batches {}", m_max_sprite_count_in_sprite_batches);
-}
-
-void D3D11_RendererState::begin_frame(Color color)
+void D3D11_Renderer::begin_frame(Color clear_color)
 {
     m_draw_calls_in_frame = 0;
-    m_current_sprite_batch.sprite_commands.clear();
 
     // hot reloading
     f64 current_time = platform_get_highresolution_time_seconds();
@@ -510,7 +350,7 @@ void D3D11_RendererState::begin_frame(Color color)
         if (last_shader_write_time != m_last_shader_write_time)
         {
             m_last_shader_write_time = last_shader_write_time;
-            D3D_ShaderData shader = m_renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
+            D3D_ShaderData shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
 
             bool is_error_shader = true;
             is_error_shader &= shader.input_layout == m_error_shader.input_layout;
@@ -534,56 +374,46 @@ void D3D11_RendererState::begin_frame(Color color)
         }
     }
 
-    f32 background_colour[4] = { color.r, color.g, color.b, color.a };
-    m_renderer->m_device_context->ClearRenderTargetView(m_render_target_view, background_colour);
+    f32 background_colour[4] = { clear_color.r, clear_color.g, clear_color.b, clear_color.a };
+    m_device_context->ClearRenderTargetView(m_render_target_view, background_colour);
 
     RECT window_rect;
-    GetWindowRect(m_renderer->m_hwnd, &window_rect);
-    m_renderer->m_window_width = window_rect.right - window_rect.left;
-    m_renderer->m_window_height = window_rect.bottom - window_rect.top;
+    GetWindowRect(m_hwnd, &window_rect);
+    m_window_width = window_rect.right - window_rect.left;
+    m_window_height = window_rect.bottom - window_rect.top;
     D3D11_VIEWPORT viewport = {0};
-    viewport.Width = (f32)m_renderer->m_window_width;
-    viewport.Height = (f32)m_renderer->m_window_height;
-    m_renderer->m_device_context->RSSetViewports(1, &viewport);
-    m_renderer->m_device_context->OMSetRenderTargets(1, &m_render_target_view, NULL);
+    viewport.Width = (f32)m_window_width;
+    viewport.Height = (f32)m_window_height;
+    m_device_context->RSSetViewports(1, &viewport);
+    m_device_context->OMSetRenderTargets(1, &m_render_target_view, NULL);
 
-    m_renderer->m_device_context->OMSetBlendState(m_blend_state, NULL, 0xffffffff);
+    m_device_context->OMSetBlendState(m_blend_state, NULL, 0xffffffff);
 
-    m_renderer->m_device_context->RSSetState(m_rasterizer_state);
+    m_device_context->RSSetState(m_rasterizer_state);
 }
 
-void D3D11_RendererState::end_sprite_batch(SpriteBatch& sprite_batch)
+void D3D11_Renderer::end_sprite_batch(D3D11_SpriteBatch& sprite_batch)
 {
     ASSERT(sprite_batch.is_valid(), "");
-    ASSERT(m_sprite_batches_in_flight > 0, "");
-    
-    m_sprite_batches_in_flight -= 1;
 
-    m_max_sprite_count_in_sprite_batches = std::max(m_max_sprite_count_in_sprite_batches, sprite_batch.sprite_commands.size());
-
-    Texture_D3D11* texture = sprite_batch.texture;
+    shared_ptr<D3D11_Texture> texture = sprite_batch.texture;
 
     // Set instance buffer data
     {
         D3D11_MAPPED_SUBRESOURCE mapped_subresource;
-        m_renderer->m_device_context->Map(
+        m_device_context->Map(
             (ID3D11Resource*)m_per_instance_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource);
         InstanceData* instance_datas = (InstanceData*)mapped_subresource.pData;
 
         for (usz cmd_idx = 0; cmd_idx < sprite_batch.sprite_commands.size(); ++cmd_idx)
         {
             auto& sprite_cmd = sprite_batch.sprite_commands[cmd_idx];
-            Color ctl = sprite_cmd.gradient.top_left;
-            Color ctr = sprite_cmd.gradient.top_right;
-            Color cbl = sprite_cmd.gradient.bottom_left;
-            Color cbr = sprite_cmd.gradient.bottom_right;
-            
             InstanceData& instance = *(instance_datas + cmd_idx);
 
-            instance.colors[0] = cbl.r, cbl.g, cbl.b, cbl.a;
-            instance.colors[1] = cbr.r, cbr.g, cbr.b, cbr.a;
-            instance.colors[2] = ctr.r, ctr.g, ctr.b, ctr.a;
-            instance.colors[3] = ctl.r, ctl.g, ctl.b, ctl.a;
+            instance.color[0] = sprite_cmd.color.r;
+            instance.color[1] = sprite_cmd.color.g;
+            instance.color[2] = sprite_cmd.color.b;
+            instance.color[3] = sprite_cmd.color.a;
             instance.src_rect[0] = sprite_cmd.src.x;
             instance.src_rect[1] = sprite_cmd.src.y;
             instance.src_rect[2] = sprite_cmd.src.w;
@@ -592,86 +422,85 @@ void D3D11_RendererState::end_sprite_batch(SpriteBatch& sprite_batch)
             instance.dst_rect[1] = sprite_cmd.dst.y;
             instance.dst_rect[2] = sprite_cmd.dst.w;
             instance.dst_rect[3] = sprite_cmd.dst.h;
-            instance.edge_softness = sprite_cmd.edge_softness;
-            instance.corner_radius = sprite_cmd.corner_radius;
-            instance.border_thickness = sprite_cmd.border_thickness;
         }
 
-        m_renderer->m_device_context->Unmap((ID3D11Resource*)m_per_instance_buffer, 0);
+        m_device_context->Unmap((ID3D11Resource*)m_per_instance_buffer, 0);
     }
 
-    m_renderer->m_device_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_renderer->m_device_context->IASetInputLayout(m_shader.input_layout);
+    m_device_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_device_context->IASetInputLayout(m_shader.input_layout);
 
     u32 vertex_offsets[2] = { 0, 0 };
     u32 vertex_strides[2] = { sizeof(VertexData), sizeof(InstanceData) };
     ID3D11Buffer* vertex_buffers[2] = { m_per_vertex_buffer, m_per_instance_buffer };
-    m_renderer->m_device_context->IASetVertexBuffers(
+    m_device_context->IASetVertexBuffers(
         0,
         2,
         vertex_buffers,
         vertex_strides,
         vertex_offsets);
 
-    m_renderer->m_device_context->IASetIndexBuffer(
+    m_device_context->IASetIndexBuffer(
         m_index_buffer, DXGI_FORMAT_R16_UINT, 0);
 
     // Set constant buffer data
     {
         D3D11_MAPPED_SUBRESOURCE mapped_subresource;
-        m_renderer->m_device_context->Map(
+        m_device_context->Map(
             (ID3D11Resource*)m_constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource);
 
         ShaderConstants* shader_constants = (ShaderConstants*)mapped_subresource.pData;
-        shader_constants->window_size_x = (f32)m_renderer->m_window_width;
-        shader_constants->window_size_y = (f32)m_renderer->m_window_height;
+        shader_constants->window_size_x = (f32)m_window_width;
+        shader_constants->window_size_y = (f32)m_window_height;
         shader_constants->texture_size_x = (f32)texture->width;
         shader_constants->texture_size_y = (f32)texture->height;
 
-        m_renderer->m_device_context->Unmap(
+        m_device_context->Unmap(
             (ID3D11Resource*)m_constant_buffer, 0);
     }
 
-    m_renderer->m_device_context->VSSetShader(
+    m_device_context->VSSetShader(
         m_shader.vertex_shader, NULL, 0);
-    m_renderer->m_device_context->VSSetConstantBuffers(
+    m_device_context->VSSetConstantBuffers(
         0, 1, &m_constant_buffer);
 
-    m_renderer->m_device_context->PSSetShader(
+    m_device_context->PSSetShader(
         m_shader.pixel_shader, NULL, 0);
-    m_renderer->m_device_context->PSSetConstantBuffers(
+    m_device_context->PSSetConstantBuffers(
         0, 1, &m_constant_buffer);
-    m_renderer->m_device_context->PSSetShaderResources(
+    m_device_context->PSSetShaderResources(
         0, 1, &texture->texture_view);
-    m_renderer->m_device_context->PSSetSamplers(
+    m_device_context->PSSetSamplers(
         0, 1, &texture->sampler_state);
 
     u32 index_count = 6;
     u32 instance_count = (u32)sprite_batch.sprite_commands.size();
-    m_renderer->m_device_context->DrawIndexedInstanced(
+    m_device_context->DrawIndexedInstanced(
         index_count, instance_count,
         0, 0, 0);
 
     m_draw_calls_in_frame += 1;
 }
 
-void D3D11_RendererState::end_frame(u64* out_draw_calls)
+void D3D11_Renderer::end_frame(bool use_vsync, u64* out_draw_calls)
 {
-    end_sprite_batch(m_current_sprite_batch);
-    m_current_sprite_batch.texture = 0;
-    m_current_sprite_batch.sprite_commands.clear();
-
-    ASSERT(m_sprite_batches_in_flight == 0, "");
+    if (m_current_sprite_batch.is_valid()) {
+        end_sprite_batch(m_current_sprite_batch);
+        m_current_sprite_batch.texture = nullptr;
+        m_current_sprite_batch.sprite_commands.clear();
+    }
     UINT sync_interval = 0;
-    m_renderer->m_swap_chain->Present(sync_interval, 0);
+    m_swap_chain->Present(sync_interval, 0);
     *out_draw_calls = m_draw_calls_in_frame;
 }
 
-TextureHandle D3D11_RendererState::create_texture(u32* pixels, u32 width, u32 height)
+TextureHandle D3D11_Renderer::create_texture(u32* pixels, u32 width, u32 height)
 {
     HRESULT hr;
 
-    Texture_D3D11 &tex = m_textures.emplace_back();
+    auto tex_ptr = make_shared<D3D11_Texture>();
+    auto& tex = *tex_ptr;
+    
     tex.width = width;
     tex.height = height;
     tex.pixels = pixels;
@@ -683,7 +512,7 @@ TextureHandle D3D11_RendererState::create_texture(u32* pixels, u32 width, u32 he
     sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     sampler_desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
 
-    m_renderer->m_device->CreateSamplerState(&sampler_desc, &tex.sampler_state);
+    m_device->CreateSamplerState(&sampler_desc, &tex.sampler_state);
 
     D3D11_TEXTURE2D_DESC texture_desc = {0};
     texture_desc.Width = width;
@@ -699,18 +528,18 @@ TextureHandle D3D11_RendererState::create_texture(u32* pixels, u32 width, u32 he
     texture_subresource_data.pSysMem = pixels;
     texture_subresource_data.SysMemPitch = width * sizeof(*pixels);
 
-    hr = m_renderer->m_device->CreateTexture2D(
+    hr = m_device->CreateTexture2D(
         &texture_desc, &texture_subresource_data, &tex.texture);
     ASSERT_UNCHECKED(SUCCEEDED(hr), "");
 
-    hr = m_renderer->m_device->CreateShaderResourceView(
+    hr = m_device->CreateShaderResourceView(
         (ID3D11Resource*)tex.texture, NULL, &tex.texture_view);
     ASSERT_UNCHECKED(SUCCEEDED(hr), "");
 
-    return &tex;
+    return tex_ptr;
 }
 
-TextureHandle D3D11_RendererState::create_texture_from_file(const char* filename)
+TextureHandle D3D11_Renderer::create_texture_from_file(const char* filename)
 {
     int req_comps = 4;
     int width, height, num_comps;
@@ -720,10 +549,10 @@ TextureHandle D3D11_RendererState::create_texture_from_file(const char* filename
     return result;
 }
 
-Texture_D3D11* D3D11_RendererState::create_font_texture(u8 const* pixels, u32 width, u32 height)
+TextureHandle D3D11_Renderer::create_font_texture(non_null<u8> pixels, u32 width, u32 height)
 {
     usz pixels_len = width * height;
-    Vector<u32> gpu_pixels(pixels_len);
+    vector<u32> gpu_pixels(pixels_len);
 
     u32 r = 0xFF;
     u32 g = 0xFF;
@@ -735,130 +564,104 @@ Texture_D3D11* D3D11_RendererState::create_font_texture(u8 const* pixels, u32 wi
         gpu_pixels[pixel_idx] = pixel;
     }
 
-    Texture_D3D11* result = (Texture_D3D11*)create_texture(gpu_pixels.data(), width, height);
+    auto result = create_texture(gpu_pixels.data(), width, height);
     return result;
 }
 
-void D3D11_RendererState::draw_rect_pro(Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient)
-{
-    Rect src;
-    src.x = 0;
-    src.y = 0;
-    src.w = (f32)m_white_texture->width;
-    src.h = (f32)m_white_texture->height;
-    draw_sprite_pro(m_white_texture, src, dst, edge_softness, corner_radius, border_thickness, gradient);
-}
-
-void D3D11_RendererState::draw_sprite_tint(TextureHandle texture, Rect src, Rect dst, Color tint_color)
-{
-    ColorGradient gradient = {
-        tint_color,
-        tint_color,
-        tint_color,
-        tint_color,
-    };
-    draw_sprite_pro(texture, src, dst, 0.f, 0.f, 0.f, gradient);
-}
-
-void D3D11_RendererState::draw_sprite(TextureHandle texture, Rect src, Rect dst)
-{
-    draw_sprite_tint(texture, src, dst, Color{ 1, 1, 1, 1 });
-}
-
-void D3D11_RendererState::draw_sprite_pro(TextureHandle texture, Rect src, Rect dst, f32 edge_softness, f32 corner_radius, f32 border_thickness, ColorGradient gradient)
+void D3D11_Renderer::draw_sprite(const TextureHandle &texture, Rect src, Rect dst, Color tint_color)
 {
     // TODO: More intelligent batching? now it just batches if you draw the same texture multiple times in a row,
     // but maybe sometimes it could batch even if the user doesn't know to do that 
 
-    SpriteBatch &batch = m_current_sprite_batch;
+    D3D11_SpriteBatch &batch = m_current_sprite_batch;
 
-    if (batch.texture != (Texture_D3D11*)texture || batch.sprite_commands.size() >= MAX_COMMANDS_PER_SPRITE_BATCH) {
+    auto d3d11_tex = static_pointer_cast<D3D11_Texture>(texture);
+
+    if (batch.texture != d3d11_tex || batch.sprite_commands.size() >= MAX_COMMANDS_PER_SPRITE_BATCH) {
         if (batch.texture) {
             end_sprite_batch(batch);
         }
         batch.sprite_commands.clear();
-        m_sprite_batches_in_flight += 1;
-        batch.texture = (Texture_D3D11*)texture;
+        batch.texture = d3d11_tex;
     }
-    
+
     ASSERT(batch.sprite_commands.size() + 1 <= MAX_COMMANDS_PER_SPRITE_BATCH, "");
-    SpriteDrawCmd &cmd = batch.sprite_commands.emplace_back();
-    cmd.gradient = gradient;
+    SpriteDrawCmd& cmd = batch.sprite_commands.emplace_back();
     cmd.src = src;
     cmd.dst = dst;
-    cmd.edge_softness = edge_softness;
-    cmd.corner_radius = corner_radius;
-    cmd.border_thickness = border_thickness;
+    cmd.color = tint_color;
 }
 
-FontHandle D3D11_RendererState::create_font(const char* font_file, f32 size)
+
+FontHandle D3D11_Renderer::create_font(non_null<const char> font_file, f32 size)
 {
-   Font_D3D11 *result = NULL;
+    shared_ptr<D3D11_Font> result;
+    
+    auto font_data = read_entire_file_as_bytes(font_file);
+    ASSERT_UNCHECKED(!font_data.empty(), "");
 
-   auto font_data = read_entire_file_as_bytes(font_file);
-   ASSERT_UNCHECKED(!font_data.empty(), "");
+    f32 ascent;
+    f32 descent;
+    f32 line_gap;
+    stbtt_GetScaledFontVMetrics(font_data.data(), 0, size, &ascent, &descent, &line_gap);
 
-   f32 ascent;
-   f32 descent;
-   f32 line_gap;
-   stbtt_GetScaledFontVMetrics(font_data.data(), 0, size, &ascent, &descent, &line_gap);
+    // ASCII range
+    u32 first_char = 0;
+    u32 last_char = 255;
+    u32 num_chars = last_char - first_char;
 
-   // ASCII range
-   u32 first_char = 0;
-   u32 last_char = 255;
-   u32 num_chars = last_char - first_char;
+    // TODO: Adjust atlas size somehow based on font size etc?
+    u32 width = 512;
+    u32 height = 512;
+    u32 stride = width;
 
-   // TODO: Adjust atlas size somehow based on font size etc?
-   u32 width = 512;
-   u32 height = 512;
-   u32 stride = width;
+    vector<u8> pixels(width * height);
 
-   Vector<u8> pixels(width * height);
-
-   stbtt_pack_context pc;
-   if (stbtt_PackBegin(&pc, pixels.data(), width, height, stride, 1, 0) != 0)
-   {
-       Vector<stbtt_packedchar> temp_packed_chars(num_chars);
-       if (stbtt_PackFontRange(&pc, font_data.data(), 0, size, first_char, num_chars, temp_packed_chars.data()) != 0)
-       {
-           result = &m_fonts.emplace_back();
+    stbtt_pack_context pc;
+    if (stbtt_PackBegin(&pc, pixels.data(), width, height, stride, 1, 0) != 0)
+    {
+        vector<stbtt_packedchar> temp_packed_chars(num_chars);
+        if (stbtt_PackFontRange(&pc, font_data.data(), 0, size, first_char, num_chars, temp_packed_chars.data()) != 0)
+        {
+            result = make_shared<D3D11_Font>();
            
-           result->packed_chars = std::move(temp_packed_chars);
+            result->packed_chars = move(temp_packed_chars);
 
-           result->first_char = first_char;
-           result->last_char = last_char;
-           result->num_chars = num_chars;
+            result->first_char = first_char;
+            result->last_char = last_char;
+            result->num_chars = num_chars;
 
-           result->ascent = ascent;
-           result->descent = descent;
-           result->line_gap = line_gap;
+            result->ascent = ascent;
+            result->descent = descent;
+            result->line_gap = line_gap;
 
-           result->atlas = create_font_texture(pixels.data(), width, height);
-       }
-       else
-       {
-           LOG_ERROR("stbtt_PackFontRange failed");
-       }
+            result->atlas = static_pointer_cast<D3D11_Texture>(
+                create_font_texture(pixels.data(), width, height));
+        }
+        else
+        {
+            LOG_ERROR("stbtt_PackFontRange failed");
+        }
 
-       stbtt_PackEnd(&pc);
-   }
-   else
-   {
-       LOG_ERROR("stbtt_PackBegin failed");
-   }
+        stbtt_PackEnd(&pc);
+    }
+    else
+    {
+        LOG_ERROR("stbtt_PackBegin failed");
+    }
 
-   return (FontHandle)result;
+    return result;
 }
 
-void D3D11_RendererState::draw_glyph_and_advance(
-    Font_D3D11 *font,
+void D3D11_Renderer::draw_glyph_and_advance(
+    const shared_ptr<D3D11_Font> font,
     u32 glyph,
     f32* x, f32* y,
     Color tint_color)
 {
     stbtt_aligned_quad quad;
     int align_to_integer = true;
-    stbtt_GetPackedQuad(font->packed_chars.data(), font->atlas->width, font->atlas->height, font_char_index(font, glyph), x, y, &quad, align_to_integer);
+    stbtt_GetPackedQuad(font->packed_chars.data(), font->atlas->width, font->atlas->height, font->char_index(glyph), x, y, &quad, align_to_integer);
 
     Rect source;
     {
@@ -886,15 +689,16 @@ void D3D11_RendererState::draw_glyph_and_advance(
         dest.h = (y1 - y0);
     }
 
-    draw_sprite_tint((TextureHandle)font->atlas, source, dest, tint_color);
+    draw_sprite(font->atlas, source, dest, tint_color);
 }
 
-void D3D11_RendererState::draw_text_tint(FontHandle font_, u8* text, usz text_len, f32 x, f32 y, Color tint_color)
+void D3D11_Renderer::draw_text(const FontHandle& font_, span<u8> text, f32 x, f32 y, Color tint_color)
 {
-    Font_D3D11* font = (Font_D3D11*)font_;
+    auto font = static_pointer_cast<D3D11_Font>(font_);
+    
     f32 line_begin_x = x;
     y += font->ascent + font->descent; // I want text to have top-left as origin
-    for (usz text_index = 0; text_index < text_len; ++text_index)
+    for (usz text_index = 0; text_index < text.size(); ++text_index)
     {
         // TODO: UTF-8
         u32 ch = text[text_index];
@@ -905,7 +709,7 @@ void D3D11_RendererState::draw_text_tint(FontHandle font_, u8* text, usz text_le
         if (ch == '\n')
         {
             x = line_begin_x;
-            y += font_y_advance(font);
+            y += font->y_advance();
             continue;
         }
         if (ch == '\t') // tab as 4 spaces
@@ -921,12 +725,7 @@ void D3D11_RendererState::draw_text_tint(FontHandle font_, u8* text, usz text_le
     }
 }
 
-void D3D11_RendererState::draw_text(FontHandle font_, u8* text, usz text_len, f32 x, f32 y)
-{
-    draw_text_tint(font_, text, text_len, x, y, Color{ 1, 1, 1, 1 });
-}
-
-::core::own_ptr<Renderer> create_renderer()
+::core::unique_ptr<Renderer> create_renderer()
 {
     HINSTANCE instance = GetModuleHandle(0);
 
@@ -938,10 +737,9 @@ void D3D11_RendererState::draw_text(FontHandle font_, u8* text, usz text_len, f3
         return nullptr;
     }
 
-    core::own_ptr<D3D11_Renderer> renderer;
+    unique_ptr<D3D11_Renderer> renderer;
 
-    bool result = false;
-    renderer = core::make_owned<D3D11_Renderer>();
+    renderer = make_unique<D3D11_Renderer>();
 
     renderer->m_hdc = hdc;
     renderer->m_hinstance = instance;
@@ -1000,11 +798,129 @@ void D3D11_RendererState::draw_text(FontHandle font_, u8* text, usz text_len, f3
     }
 #endif
 
+
+    ID3D11Texture2D* framebuffer;
+    hr = renderer->m_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&framebuffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    hr = renderer->m_device->CreateRenderTargetView(
+        (ID3D11Resource*)framebuffer,
+        0,
+        &renderer->m_render_target_view);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+    framebuffer->Release();
+
+    D3D11_RASTERIZER_DESC rasterizer_desc = {};
+    rasterizer_desc.FillMode = D3D11_FILL_SOLID;
+    rasterizer_desc.CullMode = D3D11_CULL_BACK;
+    rasterizer_desc.FrontCounterClockwise = true;
+    //rasterizer_desc.MultisampleEnable = true;
+    //rasterizer_desc.AntialiasedLineEnable = true;
+    hr = renderer->m_device->CreateRasterizerState(&rasterizer_desc, &renderer->m_rasterizer_state);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BLEND_DESC blend_desc = {};
+    blend_desc.RenderTarget[0].BlendEnable = true;
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D10_COLOR_WRITE_ENABLE_ALL;
+    hr = renderer->m_device->CreateBlendState(&blend_desc, &renderer->m_blend_state);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D_SHADER_MACRO error_shader_defines[2] = {}; // +1 for nul termination
+    error_shader_defines[0].Name = "ERROR_SHADER";
+    error_shader_defines[0].Definition = "1";
+    auto main_shader_filename = make_shader_filename("shader");
+    renderer->m_error_shader = renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), error_shader_defines);
+    ASSERT_UNCHECKED(renderer->m_error_shader.is_valid(), "");
+
+    renderer->m_shader = renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
+    if (!renderer->m_shader.is_valid())
+    {
+        renderer->m_shader = renderer->m_error_shader;
+    }
+
+    renderer->m_last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
+    renderer->m_file_check_time = platform_get_highresolution_time_seconds();
+
+    static const VertexData vertices[] = {
+        // pos           tex
+        -1.f, -1.f,      0, 1,
+         1.f, -1.f,      1, 1,
+         1.f,  1.f,      1, 0,
+        -1.f,  1.f,      0, 0,
+    };
+    D3D11_BUFFER_DESC per_vertex_buffer_desc = {};
+    per_vertex_buffer_desc.ByteWidth = sizeof(vertices);
+    per_vertex_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+    per_vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA per_vertex_sr = {};
+    per_vertex_sr.pSysMem = vertices;
+    hr = renderer->m_device->CreateBuffer(
+        &per_vertex_buffer_desc,
+        &per_vertex_sr,
+        &renderer->m_per_vertex_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BUFFER_DESC per_instance_buffer_desc = {};
+    per_instance_buffer_desc.ByteWidth = sizeof(InstanceData) * MAX_COMMANDS_PER_SPRITE_BATCH;
+    per_instance_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+    per_instance_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    per_instance_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = renderer->m_device->CreateBuffer(
+        &per_instance_buffer_desc,
+        NULL,
+        &renderer->m_per_instance_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    static const u16 indices[] = {
+        0, 1, 2,
+        0, 2, 3,
+    };
+    D3D11_BUFFER_DESC index_buffer_desc = { 0 };
+    index_buffer_desc.ByteWidth = sizeof(indices);
+    index_buffer_desc.Usage = D3D11_USAGE_DEFAULT;
+    index_buffer_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA index_sr_data = { 0 };
+    index_sr_data.pSysMem = indices;
+    hr = renderer->m_device->CreateBuffer(
+        &index_buffer_desc,
+        &index_sr_data,
+        &renderer->m_index_buffer);
+    ASSERT_UNCHECKED(SUCCEEDED(hr), "");
+
+    D3D11_BUFFER_DESC constant_buffer_desc = { 0 };
+    constant_buffer_desc.ByteWidth = (UINT)align_forwards(sizeof(ShaderConstants), 16);
+    constant_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+    constant_buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constant_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    renderer->m_device->CreateBuffer(&constant_buffer_desc, NULL, &renderer->m_constant_buffer);
+
+    {
+        u32 pixels[1] = { ~0u };
+        renderer->m_white_texture = renderer->create_texture(pixels, 1, 1);
+    }
+
+    renderer->m_current_sprite_batch.sprite_commands.reserve(MAX_COMMANDS_PER_SPRITE_BATCH);
+
     return renderer;
 }
 
 D3D11_Renderer::~D3D11_Renderer()
 {
+    m_blend_state->Release();
+    m_shader.vertex_shader->Release();
+    m_shader.pixel_shader->Release();
+    m_shader.input_layout->Release();
+    m_constant_buffer->Release();
+    m_per_vertex_buffer->Release();
+    m_per_instance_buffer->Release();
+    m_render_target_view->Release();
+    m_rasterizer_state->Release();
+
     m_swap_chain->Release();
     m_device_context->Release();
     m_device->Release();

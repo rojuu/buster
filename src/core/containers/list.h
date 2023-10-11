@@ -4,9 +4,8 @@
 
 namespace core::containers {
 
-template<class T>
-using List = std::list<T>;
+using std::list;
 
 }
 
-using core::containers::List;
+using core::containers::list;

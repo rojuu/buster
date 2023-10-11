@@ -1,7 +1,6 @@
 #pragma once
 
 #include "def.h"
-#include "typetraits.h"
 #include "containers/vector.h"
 
 #include <limits>
@@ -9,7 +8,7 @@
 
 #include <utility>
 
-namespace core::utils {
+namespace core {
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -42,6 +41,12 @@ void logger_init();
 // Similar UNCECKED macro also exists in def.h that does not assert
 #define ASSERT_UNCHECKED(cond, msg) ASSERT(cond, msg)
 
+using std::move;
+using std::forward;
+
+using std::max;
+using std::min;
+
 inline bool is_power_of_two(uptr value)
 {
     bool result = (value & (value - 1)) == 0;
@@ -68,8 +73,7 @@ inline uptr align_backwards(uptr value, usz alignment)
     return result;
 }
 
-template<class T>
-using numeric_limits = std::numeric_limits<T>;
+using std::numeric_limits;
 
 
 template<class T>
@@ -82,7 +86,7 @@ class ScopeGuard {
     F func;
 public:
     ScopeGuard(F&& f)
-        : func(std::forward<F&&>(f))
+        : func(forward<F&&>(f))
     {
     }
     ~ScopeGuard()
@@ -101,8 +105,13 @@ struct DeferFactory_ {
     }
 };
 static inline DeferFactory_ defer_factory_;
-#define defer const auto MACRO_VAR(deferrer_) = core::utils::defer_factory_ << [&]
+#define defer const auto MACRO_VAR(deferrer_) = core::defer_factory_ << [&]
 
-Vector<u8> read_entire_file_as_bytes(const char* filename);
+vector<u8> read_entire_file_as_bytes(const char* filename);
 
 }
+
+using core::forward; 
+using core::move;
+using core::max;
+using core::min;

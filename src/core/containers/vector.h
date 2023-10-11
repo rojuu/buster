@@ -4,9 +4,8 @@
 
 namespace core::containers {
 
-template<class T>
-using Vector = std::vector<T>;
+using std::vector;
 
 }
 
-using core::containers::Vector;
+using core::containers::vector;
