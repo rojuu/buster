@@ -3,7 +3,6 @@
 #include "def.h"
 #include "utils.h"
 #include <iterator>
-#include "type_traits.h"
 #include "string.h"
 
 namespace core::containers {
@@ -22,13 +21,6 @@ struct span
 	explicit constexpr span(T *first, T* last)
 		: m_data(first)
 		, m_size(last - first)
-	{
-	}
-
-	template< usz N >
-	constexpr span(core::type_identity_t<T>(&arr)[N]) noexcept
-		: m_data(arr)
-		, m_size(N)
 	{
 	}
 
