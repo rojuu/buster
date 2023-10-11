@@ -1,28 +1,27 @@
 add_library(core STATIC
     "containers/common.h"
     "containers/hashmap.h" 
-    "containers/pair.h"
-    "containers/string.h"
-    "containers/vector.h" 
     "containers/list.h"
+    "containers/pair.h"
     "containers/span.h"
+    "containers/string.h"
     "containers/string_view.h"
+    "containers/vector.h" 
 
     "def.h"   
-    "simd.h"
-    
     "non_null.h"
-    "out_ptr.h" 
-
+    "out_ptr.h"
+    "simd.h"
+    "smart_ptr.h"
+    "string_builder.h"
     "utils.h"
     "utils.cpp"
-    "smart_ptr.h"
+
     "platform.h"
-    
-    "platform_win32.cpp"
     "platform_sdl2.h"
     "platform_sdl2.cpp"
-    )
+    "platform_win32.cpp"
+)
 target_include_directories(core PUBLIC
     ${CMAKE_SOURCE_DIR}/src/
     ${CMAKE_SOURCE_DIR}/src/core
