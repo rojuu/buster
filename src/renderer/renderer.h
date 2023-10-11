@@ -33,6 +33,8 @@ struct RendererResource {
 
 struct Texture : RendererResource
 {
+    u32 width{};
+    u32 height{};
 };
 
 struct Font : RendererResource

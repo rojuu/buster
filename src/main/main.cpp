@@ -103,7 +103,7 @@ public:
 
 			renderer->draw_text(roboto_mono, "what is going on", 30, 30);
 			renderer->draw_text(roboto_mono, info_text, 10, 10);
-#if 0
+
 			{
 				Rect src = { 0 };
 				src.w = (f32)texture->width;
@@ -127,7 +127,7 @@ public:
 				dst.h = 256.f;
 				renderer->draw_sprite(texture2, src, dst);
 			}
-#endif
+	
 			bool use_vsync = false;
 			renderer->end_frame(use_vsync, &draw_calls_prev_frame);
 		}
