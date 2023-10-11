@@ -7,6 +7,7 @@
 #include "non_null.h"
 #include "out_ptr.h"
 #include "smart_ptr.h"
+#include "imgui.h"
 
 namespace renderer {
 

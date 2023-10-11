@@ -10,6 +10,9 @@
 
 #include "SDL.h"
 
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+
 using namespace core;
 using namespace renderer;
 
@@ -50,16 +53,46 @@ public:
 			SDL_DestroyWindow(m_window);
 		};
 
+		// Setup Dear ImGui context
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+		//io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
+		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
+		//io.ConfigViewportsNoAutoMerge = true;
+		//io.ConfigViewportsNoTaskBarIcon = true;
+
+		// Setup Dear ImGui style
+		ImGui::StyleColorsDark();
+		//ImGui::StyleColorsLight();
+
+		// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+		ImGuiStyle& style = ImGui::GetStyle();
+		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+		{
+			style.WindowRounding = 0.0f;
+			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+		}
+
+		ImGui_ImplSDL2_InitForD3D(m_window);
+
 		auto renderer = create_renderer();
 		if (!renderer) {
 			LOG_ERROR("Failed to create renderer");
 			return EXIT_FAILURE;
 		}
+
 		auto time_last = platform_get_highresolution_time_seconds();
 		auto texture = renderer->create_texture_from_file("images/duck.jpg");
 		auto texture2 = renderer->create_texture_from_file("images/sloth.jpg");
 
 		auto roboto_mono = renderer->create_font("fonts/RobotoMono-Regular.ttf", 18.f);
+
+		bool show_demo_window = true;
+		bool show_another_window = false;
+		ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 		u64 draw_calls_prev_frame = 0;
 		string info_text;
@@ -70,6 +103,8 @@ public:
 			SDL_Event event;
 			while (SDL_PollEvent(&event) != 0)
 			{
+				ImGui_ImplSDL2_ProcessEvent(&event);
+
 				if (event.type == SDL_QUIT)
 				{
 					quit = true;
@@ -99,10 +134,51 @@ public:
 					fps, delta_time * 1.e3, draw_calls_prev_frame);
 			}
 
-			renderer->begin_frame({ 0.f, 0.f, 0.f, 1.f });
+			renderer->begin_frame({ clear_color.x, clear_color.y, clear_color.z, clear_color.w });
+			ImGui_ImplSDL2_NewFrame();
+			ImGui::NewFrame();
+
+			// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+			if (show_demo_window)
+				ImGui::ShowDemoWindow(&show_demo_window);
+
+			// 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+			{
+				static float f = 0.0f;
+				static int counter = 0;
+
+				ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+				ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+				ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+				ImGui::Checkbox("Another Window", &show_another_window);
+
+				ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+				ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+				if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+					counter++;
+				ImGui::SameLine();
+				ImGui::Text("counter = %d", counter);
+
+				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+				ImGui::End();
+			}
+
+			// 3. Show another simple window.
+			if (show_another_window)
+			{
+				ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+				ImGui::Text("Hello from another window!");
+				if (ImGui::Button("Close Me"))
+					show_another_window = false;
+				ImGui::End();
+			}
+
 
 			renderer->draw_text(roboto_mono, "what is going on", 30, 30);
 			renderer->draw_text(roboto_mono, info_text, 10, 10);
+
 
 			{
 				Rect src = { 0 };
@@ -128,8 +204,17 @@ public:
 				renderer->draw_sprite(texture2, src, dst);
 			}
 	
+			ImGui::Render();
+
 			bool use_vsync = false;
 			renderer->end_frame(use_vsync, &draw_calls_prev_frame);
+
+			// Update and Render additional Platform Windows
+			if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+			{
+				ImGui::UpdatePlatformWindows();
+				ImGui::RenderPlatformWindowsDefault();
+			}
 		}
 		return EXIT_SUCCESS;
 	}
@@ -194,139 +279,3 @@ int main(int argc, char **argv)
 	int result = game.run();
 	return result;
 }
-
-#if 0
-ImGuiKey sdlk_to_imgui(SDL_Keycode keycode)
-{
-	static HashMap<SDL_Keycode, ImGuiKey> map{
-		{ SDLK_TAB, ImGuiKey_Tab },
-		{ SDLK_LEFT, ImGuiKey_LeftArrow },
-		{ SDLK_RIGHT, ImGuiKey_RightArrow },
-		{ SDLK_UP, ImGuiKey_UpArrow },
-		{ SDLK_DOWN, ImGuiKey_DownArrow },
-		{ SDLK_PAGEUP, ImGuiKey_PageUp },
-		{ SDLK_PAGEDOWN, ImGuiKey_PageDown },
-		{ SDLK_HOME, ImGuiKey_Home },
-		{ SDLK_END, ImGuiKey_End },
-		{ SDLK_INSERT, ImGuiKey_Insert },
-		{ SDLK_DELETE, ImGuiKey_Delete },
-		{ SDLK_BACKSPACE, ImGuiKey_Backspace },
-		{ SDLK_SPACE, ImGuiKey_Space },
-		{ SDLK_RETURN, ImGuiKey_Enter },
-		{ SDLK_ESCAPE, ImGuiKey_Escape },
-		{ SDLK_MENU, ImGuiKey_Menu },
-		{ SDLK_0, ImGuiKey_0 },
-		{ SDLK_1, ImGuiKey_1 },
-		{ SDLK_2, ImGuiKey_2 },
-		{ SDLK_3, ImGuiKey_3 },
-		{ SDLK_4, ImGuiKey_4 },
-		{ SDLK_5, ImGuiKey_5 },
-		{ SDLK_6, ImGuiKey_6 },
-		{ SDLK_7, ImGuiKey_7 },
-		{ SDLK_8, ImGuiKey_8 },
-		{ SDLK_9, ImGuiKey_9 },
-		{ 'a', ImGuiKey_A },
-		{ 'b', ImGuiKey_B },
-		{ 'c', ImGuiKey_C },
-		{ 'd', ImGuiKey_D },
-		{ 'e', ImGuiKey_E },
-		{ 'f', ImGuiKey_F },
-		{ 'g', ImGuiKey_G },
-		{ 'h', ImGuiKey_H },
-		{ 'i', ImGuiKey_I },
-		{ 'j', ImGuiKey_J },
-		{ 'k', ImGuiKey_K },
-		{ 'l', ImGuiKey_L },
-		{ 'm', ImGuiKey_M },
-		{ 'n', ImGuiKey_N },
-		{ 'o', ImGuiKey_O },
-		{ 'p', ImGuiKey_P },
-		{ 'q', ImGuiKey_Q },
-		{ 'r', ImGuiKey_R },
-		{ 's', ImGuiKey_S },
-		{ 't', ImGuiKey_T },
-		{ 'u', ImGuiKey_U },
-		{ 'v', ImGuiKey_V },
-		{ 'w', ImGuiKey_W },
-		{ 'x', ImGuiKey_X},
-		{ 'y', ImGuiKey_Y, },
-		{ 'z', ImGuiKey_Z},
-		{ SDLK_F1, ImGuiKey_F1, },
-		{ SDLK_F2, ImGuiKey_F2, },
-		{ SDLK_F3, ImGuiKey_F3, },
-		{ SDLK_F4, ImGuiKey_F4, },
-		{ SDLK_F5, ImGuiKey_F5, },
-		{ SDLK_F6, ImGuiKey_F6 },
-		{ SDLK_F7, ImGuiKey_F7, },
-		{ SDLK_F8, ImGuiKey_F8, },
-		{ SDLK_F9, ImGuiKey_F9, },
-		{ SDLK_F10, ImGuiKey_F10, },
-		{ SDLK_F11, ImGuiKey_F11, },
-		{ SDLK_F12, ImGuiKey_F12 },
-		{ '\'', ImGuiKey_Apostrophe},        // '
-		{ ',', ImGuiKey_Comma},             //  
-		{ '-', ImGuiKey_Minus},             // -
-		{ '.', ImGuiKey_Period},            // .
-		{ '/', ImGuiKey_Slash},             // /
-		{ ';', ImGuiKey_Semicolon},         // ;
-		{ '=', ImGuiKey_Equal},             // =
-		{ '[', ImGuiKey_LeftBracket},       // [
-		{ '\\', ImGuiKey_Backslash},         // \ (this text inhibit multiline comment caused by backslash)
-		{ ']', ImGuiKey_RightBracket},      // ]
-		{ '`', ImGuiKey_GraveAccent},       // `
-		{ SDLK_CAPSLOCK, ImGuiKey_CapsLock },
-		{ SDLK_SCROLLLOCK, ImGuiKey_ScrollLock },
-		{ SDLK_NUMLOCKCLEAR, ImGuiKey_NumLock },
-		{ SDLK_PRINTSCREEN, ImGuiKey_PrintScreen },
-		{ SDLK_PAUSE, ImGuiKey_Pause },
-		{ SDLK_KP_0, ImGuiKey_Keypad0 },
-		{ SDLK_KP_1, ImGuiKey_Keypad1 },
-		{ SDLK_KP_2, ImGuiKey_Keypad2 },
-		{ SDLK_KP_3, ImGuiKey_Keypad3 },
-		{ SDLK_KP_4, ImGuiKey_Keypad4 },
-		{ SDLK_KP_5, ImGuiKey_Keypad5 },
-		{ SDLK_KP_6, ImGuiKey_Keypad6 },
-		{ SDLK_KP_7, ImGuiKey_Keypad7 },
-		{ SDLK_KP_8, ImGuiKey_Keypad8 },
-		{ SDLK_KP_9, ImGuiKey_Keypad9 },
-		{ SDLK_KP_DECIMAL, ImGuiKey_KeypadDecimal },
-		{ SDLK_KP_DIVIDE, ImGuiKey_KeypadDivide },
-		{ SDLK_KP_MULTIPLY, ImGuiKey_KeypadMultiply },
-		{ SDLK_KP_MINUS, ImGuiKey_KeypadSubtract },
-		{ SDLK_KP_PLUS, ImGuiKey_KeypadAdd },
-		{ SDLK_KP_ENTER, ImGuiKey_KeypadEnter },
-		{ SDLK_KP_EQUALS, ImGuiKey_KeypadEqual },
-	};
-#if 0
-	{, ImGuiKey_GamepadStart },          // Menu (Xbox)      + (Switch)   Start/Options (PS)
-	{ , ImGuiKey_GamepadBack },           // View (Xbox)      - (Switch)   Share (PS)
-	{ , ImGuiKey_GamepadFaceLeft },       // X (Xbox)         Y (Switch)   Square (PS)        // Tap: Toggle Menu. Hold: Windowing mode (Focus/Move/Resize windows)
-	{ , ImGuiKey_GamepadFaceRight },      // B (Xbox)         A (Switch)   Circle (PS)        // Cancel / Close / Exit
-	{ , ImGuiKey_GamepadFaceUp },         // Y (Xbox)         X (Switch)   Triangle (PS)      // Text Input / On-screen Keyboard
-	{ , ImGuiKey_GamepadFaceDown },       // A (Xbox)         B (Switch)   Cross (PS)         // Activate / Open / Toggle / Tweak
-	{ , ImGuiKey_GamepadDpadLeft },       // D-pad Left                                       // Move / Tweak / Resize Window (in Windowing mode)
-	{ , ImGuiKey_GamepadDpadRight },      // D-pad Right                                      // Move / Tweak / Resize Window (in Windowing mode)
-	{ , ImGuiKey_GamepadDpadUp },         // D-pad Up                                         // Move / Tweak / Resize Window (in Windowing mode)
-	{ , ImGuiKey_GamepadDpadDown },       // D-pad Down                                       // Move / Tweak / Resize Window (in Windowing mode)
-	{ , ImGuiKey_GamepadL1 },             // L Bumper (Xbox)  L (Switch)   L1 (PS)            // Tweak Slower / Focus Previous (in Windowing mode)
-	{ , ImGuiKey_GamepadR1 },             // R Bumper (Xbox)  R (Switch)   R1 (PS)            // Tweak Faster / Focus Next (in Windowing mode)
-	{ , ImGuiKey_GamepadL2 },             // L Trig. (Xbox)   ZL (Switch)  L2 (PS) [Analog]
-	{ , ImGuiKey_GamepadR2 },             // R Trig. (Xbox)   ZR (Switch)  R2 (PS) [Analog]
-	{ , ImGuiKey_GamepadL3 },             // L Stick (Xbox)   L3 (Switch)  L3 (PS)
-	{ , ImGuiKey_GamepadR3 },             // R Stick (Xbox)   R3 (Switch)  R3 (PS)
-	{ , ImGuiKey_GamepadLStickLeft },     // [Analog]                                         // Move Window (in Windowing mode)
-	{ , ImGuiKey_GamepadLStickRight },    // [Analog]                                         // Move Window (in Windowing mode)
-	{ , ImGuiKey_GamepadLStickUp },       // [Analog]                                         // Move Window (in Windowing mode)
-	{ , ImGuiKey_GamepadLStickDown },     // [Analog]                                         // Move Window (in Windowing mode)
-	{ , ImGuiKey_GamepadRStickLeft },     // [Analog]
-	{ , ImGuiKey_GamepadRStickRight },    // [Analog]
-	{ , ImGuiKey_GamepadRStickUp },       // [Analog]
-	{ , ImGuiKey_GamepadRStickDown },     // [Analog]
-#endif
-		auto it = map.find(keycode);
-	if (it != map.end()) {
-		return it->second;
-	}
-	return ImGuiKey_None;
-}
-#endif

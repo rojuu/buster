@@ -29,6 +29,8 @@
 #include <d3dcompiler.h>
 #pragma warning(pop)
 
+#include "imgui_impl_dx11.h"
+
 #undef min
 #undef max
 
@@ -148,7 +150,7 @@ public:
 
     void end_sprite_batch(D3D11_SpriteBatch& sprite_batch);
     TextureHandle create_font_texture(non_null<u8> pixels, u32 width, u32 height);
-    void draw_glyph_and_advance(const shared_ptr<D3D11_Font> font, u32 glyph, f32* x, f32* y, Color tint_color);
+    void draw_glyph_and_advance(const shared_ptr<D3D11_Font> &font, u32 glyph, f32* x, f32* y, Color tint_color);
     
     
     shared_ptr<D3D11_ShaderData> create_shader(
@@ -345,6 +347,8 @@ void D3D11_Renderer::begin_frame(Color clear_color)
 {
     m_draw_calls_in_frame = 0;
 
+    ImGui_ImplDX11_NewFrame();
+
     // hot reloading
     f64 current_time = platform_get_highresolution_time_seconds();
     if (current_time - m_file_check_time > 0.5)
@@ -483,6 +487,9 @@ void D3D11_Renderer::end_frame(bool use_vsync, u64* out_draw_calls)
         m_current_sprite_batch.texture = nullptr;
         m_current_sprite_batch.sprite_commands.clear();
     }
+
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
     UINT sync_interval = 0;
     m_swap_chain->Present(sync_interval, 0);
     *out_draw_calls = m_draw_calls_in_frame;
@@ -647,7 +654,7 @@ FontHandle D3D11_Renderer::create_font(non_null<const char> font_file, f32 size)
 }
 
 void D3D11_Renderer::draw_glyph_and_advance(
-    const shared_ptr<D3D11_Font> font,
+    const shared_ptr<D3D11_Font> &font,
     u32 glyph,
     f32* x, f32* y,
     Color tint_color)
@@ -770,6 +777,10 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, string_view text, f32 x,
         &feature_level,
         &renderer->m_device_context);
     ASSERT_UNCHECKED(S_OK == hr && renderer->m_swap_chain && renderer->m_device && renderer->m_device_context, "");
+
+    if (!ImGui_ImplDX11_Init(renderer->m_device, renderer->m_device_context)) {
+        LOG_ERROR("Failed to initialize dear imgui");
+    }
 
 #if defined(IS_INTERNAL_BUILD) && IS_INTERNAL_BUILD
     // Set up debug layer to break on D3D11 errors
@@ -904,6 +915,8 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, string_view text, f32 x,
 
 D3D11_Renderer::~D3D11_Renderer()
 {
+    ImGui_ImplDX11_Shutdown();
+
     m_blend_state->Release();
     m_constant_buffer->Release();
     m_per_vertex_buffer->Release();
