@@ -135,7 +135,7 @@ public:
     FontHandle create_font(const char* font_file, f32 size) override;
 
     void draw_sprite(const TextureHandle& texture, Rect src, Rect dst, Color tint_color) override;
-    void draw_text(const FontHandle& font, span<u8> text, f32 x, f32 y, Color tint_color) override;
+    void draw_text(const FontHandle& font, span<char> text, f32 x, f32 y, Color tint_color) override;
 
     void end_sprite_batch(D3D11_SpriteBatch& sprite_batch);
     TextureHandle create_font_texture(non_null<u8> pixels, u32 width, u32 height);
@@ -692,27 +692,27 @@ void D3D11_Renderer::draw_glyph_and_advance(
     draw_sprite(font->atlas, source, dest, tint_color);
 }
 
-void D3D11_Renderer::draw_text(const FontHandle& font_, span<u8> text, f32 x, f32 y, Color tint_color)
+void D3D11_Renderer::draw_text(const FontHandle& font_, span<char> text, f32 x, f32 y, Color tint_color)
 {
     auto font = static_pointer_cast<D3D11_Font>(font_);
     
     f32 line_begin_x = x;
     y += font->ascent + font->descent; // I want text to have top-left as origin
-    for (usz text_index = 0; text_index < text.size(); ++text_index)
+    for (char ch : text)
     {
         // TODO: UTF-8
-        u32 ch = text[text_index];
-        if (ch == '\r')
+        u32 codepoint = ch;
+        if (codepoint == '\r')
         {
             continue;
         }
-        if (ch == '\n')
+        if (codepoint == '\n')
         {
             x = line_begin_x;
             y += font->y_advance();
             continue;
         }
-        if (ch == '\t') // tab as 4 spaces
+        if (codepoint == '\t') // tab as 4 spaces
         {
             for (int i = 0; i < 4; ++i)
             {
@@ -721,7 +721,7 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, span<u8> text, f32 x, f3
             continue;
         }
         // else just draw the thing
-        draw_glyph_and_advance(font, ch, &x, &y, tint_color);
+        draw_glyph_and_advance(font, codepoint, &x, &y, tint_color);
     }
 }
 

@@ -62,7 +62,7 @@ public:
 		auto roboto_mono = renderer->create_font("fonts/RobotoMono-Regular.ttf", 18.f);
 
 		u64 draw_calls_prev_frame = 0;
-		string info_text_str;
+		string info_text;
 		f64 last_frame_test = 0;
 		usz frame_count = 0;
 		bool quit = false;
@@ -95,15 +95,14 @@ public:
 				frame_count = 0;
 				last_frame_test = time_now;
 
-				info_text_str = fmt::format("FPS: {}, Frame time: {}, draw_calls {}",
+				info_text = fmt::format("FPS: {}, Frame time: {}, draw_calls {}",
 					fps, delta_time * 1.e3, draw_calls_prev_frame);
 			}
 
 			renderer->begin_frame({ 0.f, 0.f, 0.f, 1.f });
 
-			span<u8> info_text{ (u8*)info_text_str.data(), info_text_str.size() };
 			renderer->draw_text(roboto_mono, info_text, 10, 10);
-
+#if 0
 			{
 				Rect src = { 0 };
 				src.w = (f32)texture->width;
@@ -127,7 +126,7 @@ public:
 				dst.h = 256.f;
 				renderer->draw_sprite(texture2, src, dst);
 			}
-
+#endif
 			bool use_vsync = false;
 			renderer->end_frame(use_vsync, &draw_calls_prev_frame);
 		}

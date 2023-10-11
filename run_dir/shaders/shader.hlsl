@@ -21,11 +21,9 @@ struct InputData
 struct Interpolators
 {
     float4 dst_position      : SV_POSITION;
-    float2 dst_center        : TEXCOORD0;
-    float2 dst_half_size     : TEXCOORD1;
-
-    float2 pixel         : TEXCOORD2;
-    float4 color         : TEXCOORD3;
+    
+    float2 pixel         : TEXCOORD6;
+    float4 color         : TEXCOORD7;
 };
 
 Interpolators vs_main(InputData i)
@@ -43,12 +41,6 @@ Interpolators vs_main(InputData i)
     pos -= 1;
     pos.y *= -1;
     interp.dst_position = float4(pos, 0, 1);
-
-    interp.dst_center.x = i.dst_rect.x + i.dst_rect.z / 2;
-    interp.dst_center.y = i.dst_rect.y + i.dst_rect.w / 2;
-
-    interp.dst_half_size.x = i.dst_rect.z / 2;
-    interp.dst_half_size.y = i.dst_rect.w / 2;
 
     float2 pixel = i.uv * texture_size;
     pixel.x = clamp(pixel.x, i.src_rect.x, i.src_rect.x + i.src_rect.z);

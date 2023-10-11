@@ -66,7 +66,7 @@ public:
     virtual FontHandle create_font(non_null<const char> font_file, f32 size) = 0;
 
     virtual void draw_sprite(const TextureHandle &texture, Rect src, Rect dst, Color tint_color = {1,1,1,1}) = 0;
-    virtual void draw_text(const FontHandle &font, span<u8> text, f32 x, f32 y, Color tint_color = {1,1,1,1}) = 0;
+    virtual void draw_text(const FontHandle &font, span<char> text, f32 x, f32 y, Color tint_color = {1,1,1,1}) = 0;
 };
 
 ::core::unique_ptr<Renderer> create_renderer();
