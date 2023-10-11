@@ -47,8 +47,17 @@ static void d3d11_print_last_error(const char* msg)
 }
 
 
-struct D3D_ShaderData
+struct D3D11_ShaderData : public RendererResource
 {
+    D3D11_ShaderData() = default;
+
+    ~D3D11_ShaderData()
+    {
+        if(input_layout) input_layout->Release();
+        if (vertex_shader) vertex_shader->Release();
+        if (pixel_shader) pixel_shader->Release();
+    }
+
     ID3D11VertexShader* vertex_shader{};
     ID3D11PixelShader* pixel_shader{};
     ID3D11InputLayout* input_layout{};
@@ -69,6 +78,9 @@ struct D3D11_Texture : public Texture
         if (texture) texture->Release();
         if (texture_view) texture_view->Release();
     }
+
+    u32 width{};
+    u32 height{};
 
     ID3D11SamplerState* sampler_state{};
     ID3D11Texture2D* texture{};
@@ -142,7 +154,7 @@ public:
     void draw_glyph_and_advance(const shared_ptr<D3D11_Font> font, u32 glyph, f32* x, f32* y, Color tint_color);
     
     
-    D3D_ShaderData create_shader(
+    shared_ptr<D3D11_ShaderData> create_shader(
         const char* shader_filename,
         D3D11_INPUT_ELEMENT_DESC const* input_elem_descs,
         usz input_elem_descs_count,
@@ -171,9 +183,9 @@ public:
 
     ID3D11BlendState* m_blend_state{};
 
-    D3D_ShaderData m_error_shader{};
-
-    D3D_ShaderData m_shader{};
+    shared_ptr<D3D11_ShaderData> m_error_shader{};
+    shared_ptr<D3D11_ShaderData> m_shader{};
+   
     u64 m_last_shader_write_time{};
     f64 m_file_check_time{};
 
@@ -212,13 +224,13 @@ struct ShaderConstants
 };
 
 
-D3D_ShaderData D3D11_Renderer::create_shader(
+shared_ptr<D3D11_ShaderData> D3D11_Renderer::create_shader(
     const char *shader_filename,
     D3D11_INPUT_ELEMENT_DESC const* input_elem_descs,
     usz input_elem_descs_count,
     D3D_SHADER_MACRO const* defines)
 {
-    D3D_ShaderData result = {0};
+    shared_ptr<D3D11_ShaderData> result;;
     HRESULT hr;
 
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
@@ -281,13 +293,15 @@ D3D_ShaderData D3D11_Renderer::create_shader(
         }
     }
 
+    result = make_shared<D3D11_ShaderData>();
+
     if (vs_blob)
     {
         hr = m_device->CreateVertexShader(
             vs_blob->GetBufferPointer(),
             vs_blob->GetBufferSize(),
             NULL,
-            &result.vertex_shader);
+            &result->vertex_shader);
         ASSERT_UNCHECKED(SUCCEEDED(hr), "");
     }
 
@@ -297,7 +311,7 @@ D3D_ShaderData D3D11_Renderer::create_shader(
             ps_blob->GetBufferPointer(),
             ps_blob->GetBufferSize(),
             NULL,
-            &result.pixel_shader);
+            &result->pixel_shader);
         ASSERT_UNCHECKED(SUCCEEDED(hr), "");
     }
 
@@ -308,7 +322,7 @@ D3D_ShaderData D3D11_Renderer::create_shader(
             (UINT)input_elem_descs_count,
             vs_blob->GetBufferPointer(),
             vs_blob->GetBufferSize(),
-            &result.input_layout);
+            &result->input_layout);
         ASSERT_UNCHECKED(SUCCEEDED(hr), "");
     }
 
@@ -350,26 +364,15 @@ void D3D11_Renderer::begin_frame(Color clear_color)
         if (last_shader_write_time != m_last_shader_write_time)
         {
             m_last_shader_write_time = last_shader_write_time;
-            D3D_ShaderData shader = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
-
-            bool is_error_shader = true;
-            is_error_shader &= shader.input_layout == m_error_shader.input_layout;
-            is_error_shader &= shader.pixel_shader == m_error_shader.pixel_shader;
-            is_error_shader &= shader.vertex_shader == m_error_shader.vertex_shader;
-            if (!is_error_shader && m_shader.is_valid())
-            {
-                m_shader.input_layout->Release();
-                m_shader.vertex_shader->Release();
-                m_shader.pixel_shader->Release();
-            }
-
+            auto shader_ptr = create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
+            auto& shader = *shader_ptr;
             if (shader.is_valid())
             {
-                m_shader = shader;
+                m_shader = move(shader_ptr);
             }
             else
             {
-                m_shader = m_error_shader;
+                m_shader = move(m_error_shader);
             }
         }
     }
@@ -428,7 +431,7 @@ void D3D11_Renderer::end_sprite_batch(D3D11_SpriteBatch& sprite_batch)
     }
 
     m_device_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_device_context->IASetInputLayout(m_shader.input_layout);
+    m_device_context->IASetInputLayout(m_shader->input_layout);
 
     u32 vertex_offsets[2] = { 0, 0 };
     u32 vertex_strides[2] = { sizeof(VertexData), sizeof(InstanceData) };
@@ -460,12 +463,12 @@ void D3D11_Renderer::end_sprite_batch(D3D11_SpriteBatch& sprite_batch)
     }
 
     m_device_context->VSSetShader(
-        m_shader.vertex_shader, NULL, 0);
+        m_shader->vertex_shader, NULL, 0);
     m_device_context->VSSetConstantBuffers(
         0, 1, &m_constant_buffer);
 
     m_device_context->PSSetShader(
-        m_shader.pixel_shader, NULL, 0);
+        m_shader->pixel_shader, NULL, 0);
     m_device_context->PSSetConstantBuffers(
         0, 1, &m_constant_buffer);
     m_device_context->PSSetShaderResources(
@@ -503,7 +506,6 @@ TextureHandle D3D11_Renderer::create_texture(u32* pixels, u32 width, u32 height)
     
     tex.width = width;
     tex.height = height;
-    tex.pixels = pixels;
 
     D3D11_SAMPLER_DESC sampler_desc = {};
     sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -835,10 +837,10 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, span<char> text, f32 x, 
     error_shader_defines[0].Definition = "1";
     auto main_shader_filename = make_shader_filename("shader");
     renderer->m_error_shader = renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), error_shader_defines);
-    ASSERT_UNCHECKED(renderer->m_error_shader.is_valid(), "");
+    ASSERT_UNCHECKED(renderer->m_error_shader->is_valid(), "");
 
     renderer->m_shader = renderer->create_shader(main_shader_filename.c_str(), shader_input_element_descs, ARRAY_COUNT(shader_input_element_descs), NULL);
-    if (!renderer->m_shader.is_valid())
+    if (!renderer->m_shader->is_valid())
     {
         renderer->m_shader = renderer->m_error_shader;
     }
@@ -912,9 +914,6 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, span<char> text, f32 x, 
 D3D11_Renderer::~D3D11_Renderer()
 {
     m_blend_state->Release();
-    m_shader.vertex_shader->Release();
-    m_shader.pixel_shader->Release();
-    m_shader.input_layout->Release();
     m_constant_buffer->Release();
     m_per_vertex_buffer->Release();
     m_per_instance_buffer->Release();
