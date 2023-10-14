@@ -60,7 +60,14 @@ float4 ps_main(Interpolators interp) : SV_TARGET
     // TODO: Toggle allow switching between fat pixel and regular bilinear
     // "fat pixel" or smooth pixel art shader courtesy of https://www.shadertoy.com/view/MlB3D3
     float2 pixel = floor(interp.pixel) + 0.5; // emulate point filtering
+#if 0
     pixel += (1.0 - clamp((1.0 - frac(interp.pixel)) * 4, 0.0, 1.0)); // add some aa
+#else
+    float2 gradient = fwidth(interp.pixel);
+    float2 clampedGradient = clamp((1.0 - abs(frac(interp.pixel) - 0.5) / gradient), 0.0, 1.0);
+    pixel += clampedGradient * gradient * 0.5; // add some aa
+#endif
+
     float4 tex_col = tex.Sample(samp, pixel / texture_size);
 
     float4 color = interp.color * tex_col;
