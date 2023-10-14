@@ -13,10 +13,13 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 
-using namespace core;
-using namespace renderer;
+using namespace bstr::core;
+using namespace bstr::core::platform;
+using namespace bstr::renderer;
 
 // ImGuiKey sdlk_to_imgui(SDL_Keycode keycode);
+
+namespace bstr {
 
 class Game {
 public:
@@ -43,7 +46,7 @@ public:
 			1600, 900,
 			SDL_WINDOW_RESIZABLE);
 
-		sdl2_set_window_handle(m_window);
+		sdl2::set_window_handle(m_window);
 
 		if (!m_window) {
 			LOG_CRITICAL("Unable to create SDL_Window: {}", SDL_GetError());
@@ -84,7 +87,7 @@ public:
 			return EXIT_FAILURE;
 		}
 
-		auto time_last = platform_get_highresolution_time_seconds();
+		auto time_last = get_highresolution_time_seconds();
 		auto texture = renderer->create_texture_from_file("images/duck.jpg");
 		auto texture2 = renderer->create_texture_from_file("images/sloth.jpg");
 
@@ -118,7 +121,7 @@ public:
 				}
 			}
 
-			f64 time_now = platform_get_highresolution_time_seconds();
+			f64 time_now = get_highresolution_time_seconds();
 			f32 delta_time = (f32)(time_now - time_last);
 			time_last = time_now;
 
@@ -230,7 +233,7 @@ public:
 	bool set_cwd_to_run_dir()
 	{
 		bool run_dir_valid = false;
-		auto cwd = platform_get_current_working_directory();
+		auto cwd = get_current_working_directory();
 		if (cwd.empty()) {
 			return false;
 		}
@@ -245,7 +248,7 @@ public:
 		for (usz iterations = 0; iterations < 30; ++iterations) 
 		{
 			run_dir_buf.append(run_dir_postfix);
-			if (platform_file_exists(run_dir_buf.c_str()))
+			if (file_exists(run_dir_buf.c_str()))
 			{
 				run_dir_valid = true;
 				break;
@@ -262,7 +265,7 @@ public:
 			}
 		}
 		if (run_dir_valid) {
-			platform_set_current_working_directory(run_dir_buf.c_str());
+			set_current_working_directory(run_dir_buf.c_str());
 		}
 
 		return run_dir_valid;
@@ -273,9 +276,11 @@ private:
 	SDL_Window* m_window{};
 };
 
+}
+
 int main(int argc, char **argv)
 {
-	Game game;
+	bstr::Game game;
 	int result = game.run();
 	return result;
 }

@@ -2,12 +2,12 @@
 
 #include <string>
 
-namespace core::containers {
+namespace bstr::core::containers {
 
-using std::basic_string;
-using std::string;
+using ::std::basic_string;
+using ::std::string;
 
 }
 
-using core::containers::basic_string;
-using core::containers::string;
+using bstr::core::containers::basic_string;
+using bstr::core::containers::string;

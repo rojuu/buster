@@ -2,10 +2,10 @@
 
 #include <vector>
 
-namespace core::containers {
+namespace bstr::core::containers {
 
-using std::vector;
+using ::std::vector;
 
 }
 
-using core::containers::vector;
+using bstr::core::containers::vector;

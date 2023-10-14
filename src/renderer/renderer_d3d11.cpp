@@ -34,10 +34,11 @@
 #undef min
 #undef max
 
-using namespace core;
-using namespace core::containers;
+using namespace bstr::core;
+using namespace bstr::core::containers;
+using namespace bstr::core::platform;
 
-namespace renderer {
+namespace bstr::renderer {
 
 static void d3d11_print_last_error(const char* msg)
 {
@@ -350,12 +351,12 @@ void D3D11_Renderer::begin_frame(Color clear_color)
     ImGui_ImplDX11_NewFrame();
 
     // hot reloading
-    f64 current_time = platform_get_highresolution_time_seconds();
+    f64 current_time = get_highresolution_time_seconds();
     if (current_time - m_file_check_time > 0.5)
     {
         m_file_check_time = current_time;
         auto main_shader_filename = make_shader_filename("shader");
-        u64 last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
+        u64 last_shader_write_time = get_file_modify_time(main_shader_filename.c_str());
         if (last_shader_write_time != m_last_shader_write_time)
         {
             m_last_shader_write_time = last_shader_write_time;
@@ -725,11 +726,11 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, string_view text, f32 x,
     }
 }
 
-::core::unique_ptr<Renderer> create_renderer()
+::bstr::core::unique_ptr<Renderer> create_renderer()
 {
     HINSTANCE instance = GetModuleHandle(0);
 
-    PlatformWindowHandle window_handle = platform_get_native_window_handle();
+    WindowHandle window_handle = get_native_window_handle();
     HWND window = (HWND)window_handle.nwh;
     HDC hdc = GetDC(window);
     if (!hdc) {
@@ -847,8 +848,8 @@ void D3D11_Renderer::draw_text(const FontHandle& font_, string_view text, f32 x,
         renderer->m_shader = renderer->m_error_shader;
     }
 
-    renderer->m_last_shader_write_time = platform_get_file_modify_time(main_shader_filename.c_str());
-    renderer->m_file_check_time = platform_get_highresolution_time_seconds();
+    renderer->m_last_shader_write_time = get_file_modify_time(main_shader_filename.c_str());
+    renderer->m_file_check_time = get_highresolution_time_seconds();
 
     static const VertexData vertices[] = {
         // pos           tex

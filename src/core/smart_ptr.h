@@ -3,7 +3,7 @@
 #include <memory>
 #include "utils.h"
 
-namespace core {
+namespace bstr::core {
 
 using std::unique_ptr;
 using std::make_unique;
@@ -16,11 +16,11 @@ using std::reinterpret_pointer_cast;
 
 }
 
-using core::unique_ptr;
-using core::make_unique;
+using bstr::core::unique_ptr;
+using bstr::core::make_unique;
 
-using core::shared_ptr;
-using core::make_shared;
+using bstr::core::shared_ptr;
+using bstr::core::make_shared;
 
-using core::static_pointer_cast;
-using core::reinterpret_pointer_cast;
+using bstr::core::static_pointer_cast;
+using bstr::core::reinterpret_pointer_cast;

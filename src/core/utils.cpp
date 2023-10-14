@@ -2,7 +2,7 @@
 
 #include <cstdio>
 
-namespace core {
+namespace bstr::core {
 
 void logger_init()
 {

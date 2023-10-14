@@ -1,6 +1,6 @@
 #pragma once
 
-namespace core::containers {
+namespace bstr::core::containers {
 
 template<class T1, class T2>
 struct pair {
@@ -10,4 +10,4 @@ struct pair {
 
 }
 
-using core::containers::pair;
+using bstr::core::containers::pair;

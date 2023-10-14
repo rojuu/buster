@@ -9,7 +9,7 @@
 #include "smart_ptr.h"
 #include "imgui.h"
 
-namespace renderer {
+namespace bstr::renderer {
 
 struct Color
 {
@@ -69,7 +69,7 @@ public:
     virtual void draw_text(const FontHandle &font, string_view text, f32 x, f32 y, Color tint_color = {1,1,1,1}) = 0;
 };
 
-::core::unique_ptr<Renderer> create_renderer();
+::bstr::core::unique_ptr<Renderer> create_renderer();
 
 }
 

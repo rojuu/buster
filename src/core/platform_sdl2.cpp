@@ -6,18 +6,18 @@
 
 #include "platform_sdl2.h"
 
-using namespace core;
+namespace bstr::core::platform {
 
 static SDL_Window* g_window_handle = 0;
 
-void sdl2_set_window_handle(SDL_Window *window)
+void sdl2::set_window_handle(SDL_Window *window)
 {
     g_window_handle = window;
 }
 
-PlatformWindowHandle platform_get_native_window_handle()
+WindowHandle get_native_window_handle()
 {
-    PlatformWindowHandle result = {};
+    WindowHandle result = {};
     
     SDL_SysWMinfo wm_info = {};
     zero_struct(&wm_info);
@@ -33,7 +33,7 @@ PlatformWindowHandle platform_get_native_window_handle()
     return result;
 }
 
-f64 platform_get_highresolution_time_seconds()
+f64 get_highresolution_time_seconds()
 {
     f64 result = 0;
 
@@ -45,9 +45,11 @@ f64 platform_get_highresolution_time_seconds()
     return result;
 }
 
-WindowSize platform_get_window_size()
+WindowSize get_window_size()
 {
     WindowSize size = { 0 };
     SDL_GetWindowSize(g_window_handle, &size.width, &size.height);
     return size;
+}
+
 }

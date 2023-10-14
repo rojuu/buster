@@ -2,10 +2,10 @@
 
 #include <list>
 
-namespace core::containers {
+namespace bstr::core::containers {
 
 using std::list;
 
 }
 
-using core::containers::list;
+using bstr::core::containers::list;

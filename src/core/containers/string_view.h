@@ -1,8 +1,8 @@
 #include <string_view>
 
-namespace core::containers {
+namespace bstr::core::containers {
 
-using std::string_view;
+using ::std::string_view;
 
 }
-using core::containers::string_view;
+using bstr::core::containers::string_view;

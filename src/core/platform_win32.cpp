@@ -15,6 +15,8 @@
 
 #include <stdio.h>
 
+namespace bstr::core::platform {
+
 void win32_print_last_error(const char* msg)
 {
     char err[256] = { 0 };
@@ -23,13 +25,13 @@ void win32_print_last_error(const char* msg)
     LOG_ERROR("{}: {}", msg, err);
 }
 
-void* platform_load_library(const char* library_filename)
+void* load_library(const char* library_filename)
 {
     HMODULE library_module = LoadLibraryA(library_filename);
     return library_module;
 }
 
-void platform_free_library(void* library)
+void free_library(void* library)
 {
     BOOL result = FreeLibrary((HMODULE)library);
     if (!result)
@@ -38,7 +40,7 @@ void platform_free_library(void* library)
     }
 }
 
-bool platform_copy_file(const char* src, const char* dst)
+bool copy_file(const char* src, const char* dst)
 {
     BOOL result = CopyFileA(src, dst, false);
     if (!result)
@@ -48,34 +50,34 @@ bool platform_copy_file(const char* src, const char* dst)
     return result;
 }
 
-bool platform_file_exists(const char* filename)
+bool file_exists(const char* filename)
 {
     BOOL result = PathFileExistsA(filename);
     return result;
 }
 
-PlatformOpaqueFunctionPtr platform_get_proc_address(void* library, const char* proc_name)
+OpaqueFunctionPtr get_proc_address(void* library, const char* proc_name)
 {
-    PlatformOpaqueFunctionPtr func = (PlatformOpaqueFunctionPtr)GetProcAddress((HMODULE)library, proc_name);
+    OpaqueFunctionPtr func = (OpaqueFunctionPtr)GetProcAddress((HMODULE)library, proc_name);
     if (!func) {
         win32_print_last_error("GetProcAddress");
     }
     return func;
 }
 
-void platform_print(const char* str)
+void print(const char* str)
 {
     fprintf(stdout, "%s", str);
     OutputDebugStringA(str);
 }
 
-void platform_set_current_working_directory(const char* cwd)
+void set_current_working_directory(const char* cwd)
 {
     bool res = SetCurrentDirectoryA(cwd);
     ASSERT(res, "");
 }
 
-string platform_get_current_working_directory()
+string get_current_working_directory()
 {
     string buffer;
     auto buffer_len = GetCurrentDirectoryA(0, nullptr);
@@ -85,7 +87,7 @@ string platform_get_current_working_directory()
     return buffer;
 }
 
-u64 platform_get_file_modify_time(const char* filename)
+u64 get_file_modify_time(const char* filename)
 {
     u64 result = 0;
     HANDLE file_handle = CreateFileA(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -108,4 +110,6 @@ u64 platform_get_file_modify_time(const char* filename)
     }
 
     return result;
+}
+
 }

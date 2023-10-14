@@ -8,7 +8,7 @@
 
 #include <utility>
 
-namespace core {
+namespace bstr::core {
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -111,7 +111,7 @@ vector<u8> read_entire_file_as_bytes(const char* filename);
 
 }
 
-using core::forward; 
-using core::move;
-using core::max;
-using core::min;
+using bstr::core::forward; 
+using bstr::core::move;
+using bstr::core::max;
+using bstr::core::min;

@@ -2,11 +2,11 @@
 
 #include <unordered_map>
 
-namespace core::containers {
+namespace bstr::core::containers {
 
 template<class K, class V>
-using hash_map = std::unordered_map<K, V>;
+using hash_map = ::std::unordered_map<K, V>;
 
 }
 
-using core::containers::hash_map;
+using bstr::core::containers::hash_map;

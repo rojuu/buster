@@ -1,10 +1,10 @@
 #pragma once
 
-namespace core {
+namespace bstr::core {
 
 template<typename T>
 using out_ptr = T*;
 
 }
 
-using core::out_ptr;
+using bstr::core::out_ptr;

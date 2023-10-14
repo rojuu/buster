@@ -5,7 +5,7 @@
 #include <iterator>
 #include "string.h"
 
-namespace core::containers {
+namespace bstr::core::containers {
 
 template<typename T
  // TODO?: , usz Extent = std::dynamic_extent
@@ -104,4 +104,4 @@ private:
 
 }
 
-using core::containers::span;
+using bstr::core::containers::span;

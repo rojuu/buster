@@ -5,7 +5,7 @@
 #include "containers/vector.h"
 #include "utils.h"
 
-namespace core {
+namespace bstr::core {
 
 template<typename CharT>
 class basic_string_builder {
@@ -70,4 +70,4 @@ using string_builder = basic_string_builder<char>;
 
 }
 
-using core::string_builder;
+using bstr::core::string_builder;

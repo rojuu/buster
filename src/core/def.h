@@ -1,5 +1,11 @@
 #pragma once
 
+
+#include <cstdint>
+#include <cstddef>
+
+namespace bstr {
+
 #define CONCAT_(x, y) x ## y
 #define CONCAT(x, y) CONCAT_(x, y)
 
@@ -14,9 +20,6 @@
 // potential error case at this time, but wants to make it easily searchable. Later on we can search for "UNCHECKED"
 // to find all the places in the codebase where some return value was not checked properly
 #define UNCHECKED(arg) (void)arg
-
-#include <cstdint>
-#include <cstddef>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -56,3 +59,5 @@ static constexpr auto TiB = 1024ull * GiB; // Tebibyte
 static constexpr auto PiB = 1024ull * TiB; // Pebibyte
 
 static constexpr auto PAGE_SIZE = 4 * KiB;
+
+}

@@ -4,13 +4,15 @@
 #include "containers/common.h"
 
 
+namespace bstr::core::platform {
+
 #if PLATFORM_WIN32
 static constexpr auto PATH_DELIMITER = '\\';
 #else
 #error "Unsupported platform"
 #endif      
 
-struct PlatformWindowHandle
+struct WindowHandle
 {
     void* nwh{}; // native window handle
     void* ndt{}; // native display type (mostly useful for X11)
@@ -22,21 +24,23 @@ struct WindowSize
     s32 height{};
 };
 
-void platform_print(const char* msg);
+void print(const char* msg);
 
-typedef void PlatformOpaqueFunction();
-typedef PlatformOpaqueFunction* PlatformOpaqueFunctionPtr;
+typedef void OpaqueFunction();
+typedef OpaqueFunction* OpaqueFunctionPtr;
 
-void* platform_load_library(const char* library_filename);
-void platform_free_library(void* library);
-PlatformOpaqueFunctionPtr platform_get_proc_address(void* library, const char* proc_name);
+void* load_library(const char* library_filename);
+void free_library(void* library);
+OpaqueFunctionPtr get_proc_address(void* library, const char* proc_name);
 
-bool platform_copy_file(const char* src, const char* dst);
-bool platform_file_exists(const char* filename);
-void platform_set_current_working_directory(const char* cwd);
+bool copy_file(const char* src, const char* dst);
+bool file_exists(const char* filename);
+void set_current_working_directory(const char* cwd);
 
-f64 platform_get_highresolution_time_seconds();
-WindowSize platform_get_window_size();
-PlatformWindowHandle platform_get_native_window_handle();
-string platform_get_current_working_directory();
-u64 platform_get_file_modify_time(const char* filename);
+f64 get_highresolution_time_seconds();
+WindowSize get_window_size();
+WindowHandle get_native_window_handle();
+string get_current_working_directory();
+u64 get_file_modify_time(const char* filename);
+
+}
