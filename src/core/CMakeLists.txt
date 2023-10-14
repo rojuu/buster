@@ -8,6 +8,9 @@ add_library(core STATIC
     "containers/string_view.h"
     "containers/vector.h" 
 
+    "asefile.h"
+    "asefile.cpp"
+
     "def.h"   
     "non_null.h"
     "out_ptr.h"
@@ -21,7 +24,7 @@ add_library(core STATIC
     "platform_sdl2.h"
     "platform_sdl2.cpp"
     "platform_win32.cpp"
-)
+ )
 target_include_directories(core PUBLIC
     ${CMAKE_SOURCE_DIR}/src/
     ${CMAKE_SOURCE_DIR}/src/core
