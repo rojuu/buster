@@ -4,6 +4,8 @@
 
 #include "containers/common.h"
 
+#include "zlib.h"
+
 // NOTE: Aseprite file spec is hosted at https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md
 // There is also copy of it at docs/ase-file-specs.md
 // If the spec changes, please update also the copy of the doc file
@@ -42,19 +44,6 @@ struct SIZE {
 struct RECT {
 	POINT origin;
 	SIZE size;
-};
-struct PIXEL {
-	union {
-		struct RGBA {
-			BYTE rgba[4];
-		};
-		struct Grayscale {
-			BYTE value_alpha[2];
-		};
-		struct Indexed {
-			BYTE index;
-		};
-	};
 };
 struct UUID {
 	BYTE uuid[16];
@@ -208,6 +197,53 @@ struct AseLayerChunk {
 	//DWORD		tileset_index;
 };
 
+enum CelChunkType : WORD {
+	CelChunk_RawImageData = 0,
+	CelChunk_LinkedCel = 1,
+	CelChunk_CompressedImage = 2,
+	CelChunk_CompressedTilemap = 3,
+};
+
+#pragma pack(1)
+struct AseCelChunk {
+	WORD        layer_index; // Layer index(see NOTE.2)
+	SHORT       x_position; // X position
+	SHORT       y_position; // Y position
+	BYTE        opacity_level; // Opacity level
+	WORD        cel_type; // Cel Type
+						  // 0 - Raw Image Data(unused, compressed image is preferred)
+						  // 1 - Linked Cel
+						  // 2 - Compressed Image
+						  // 3 - Compressed Tilemap
+	SHORT       z_index; // Z - Index(see NOTE.5)
+						 // 0 = default layer ordering
+						 // + N = show this cel N layers later
+						 // - N = show this cel N layers back
+	BYTE		for_future[5]; // For future(set to zero)
+	// + For cel type = 0 (Raw Image Data)
+	// WORD      Width in pixels
+	// WORD      Height in pixels
+	// PIXEL[]   Raw pixel data : row by row from top to bottom,
+	// for each scanline read pixels from left to right.
+	// 	+ For cel type = 1 (Linked Cel)
+	// 	WORD      Frame position to link with
+	// 	+ For cel type = 2 (Compressed Image)
+	// 	WORD      Width in pixels
+	// 	WORD      Height in pixels
+	// 	PIXEL[]   "Raw Cel" data compressed with ZLIB method(see NOTE.3)
+	// 	+ For cel type = 3 (Compressed Tilemap)
+	// 	WORD      Width in number of tiles
+	// 	WORD      Height in number of tiles
+	// 	WORD      Bits per tile(at the moment it's always 32-bit per tile)
+	// 		DWORD     Bitmask for tile ID(e.g. 0x1fffffff for 32 - bit tiles)
+	// 		DWORD     Bitmask for X flip
+	// 		DWORD     Bitmask for Y flip
+	// 		DWORD     Bitmask for 90CW rotation
+	// 		BYTE[10]  Reserved
+	// 		TILE[]    Row by row, from top to bottom tile by tile
+	// 		compressed with ZLIB method(see NOTE.3)
+};
+
 class AsepriteLoader {
 public:
 	explicit AsepriteLoader(const char* filename, non_null<AseFile> ase_file)
@@ -243,20 +279,24 @@ private:
 		return str;
 
 	}
-
-	vector<u8> load_bytes_from_file(usz bytes_count)
+	
+	template<typename T>
+	vector<T> load_array_from_file(usz length)
 	{
-		ASSERT(m_file_pointer + bytes_count <= m_file_data.size(), "");
-		vector<u8> bytes;
-		bytes.resize(bytes_count);
-		memcpy(bytes.data(), m_file_data.data() + m_file_pointer, bytes_count);
-		m_file_pointer += bytes_count;
-		return bytes;
+		ASSERT(m_file_pointer + length * sizeof(T) <= m_file_data.size(), "");
+		vector<T> arr;
+		arr.resize(length);
+		memcpy(arr.data(), m_file_data.data() + m_file_pointer, length * sizeof(T));
+		m_file_pointer += length * sizeof(T);
+		return arr;
 	}
+
+	usz bytes_per_pixel() const { return m_header.color_depth / 8; }
 
 	void load_header();
 	void load_frames();
 	void load_layer(DWORD chunk_size);
+	void load_cel(DWORD chunk_size);
 
 	non_null<AseFile> m_ase_file;
 
@@ -310,10 +350,10 @@ void AsepriteLoader::load_frames()
 
 			switch (chunk_header.chunk_type) {
 			case ChunkType_Layer: load_layer(chunk_header.chunk_size); break;
+			case ChunkType_Cel: load_cel(chunk_header.chunk_size); break;
 
 			case ChunkType_OldPalette:
 			case ChunkType_OldPalette2:
-			case ChunkType_Cel:
 			case ChunkType_CelExtra:
 			case ChunkType_Color:
 			case ChunkType_ExternalFiles:
@@ -342,11 +382,120 @@ void AsepriteLoader::load_layer(DWORD chunk_size)
 	
 	AseLayerChunk layer_chunk;
 	load_from_file(layer_chunk);
-	
+
 	string layer_name = load_string_from_file();
 
-	DWORD tileset_index;
-	load_from_file(tileset_index);
+	if (layer_chunk.layer_type == 2) {
+		DWORD tileset_index;
+		load_from_file(tileset_index);
+		ASSERT(false, "");
+	}
+
+	auto end_pointer = m_file_pointer;
+	ASSERT((end_pointer - start_pointer) == chunk_size, "");
+}
+
+void AsepriteLoader::load_cel(DWORD chunk_size)
+{
+	auto start_pointer = m_file_pointer;
+
+	AseCelChunk cel_chunk;
+	load_from_file(cel_chunk);
+
+	switch (cel_chunk.cel_type) {
+		case CelChunk_RawImageData: {
+			// + For cel type = 0 (Raw Image Data)
+			// WORD      Width in pixels
+			// WORD      Height in pixels
+			// PIXEL[]   Raw pixel data : row by row from top to bottom,
+			//		     for each scanline read pixels from left to right.
+			WORD width_in_pixels;
+			load_from_file(width_in_pixels);
+			WORD height_in_pixels;
+			load_from_file(height_in_pixels);
+			vector<BYTE> pixels_bytes = load_array_from_file<BYTE>(width_in_pixels * height_in_pixels * bytes_per_pixel());
+			ASSERT(false, "");
+		} break;
+
+		case CelChunk_LinkedCel: {
+			// 	+ For cel type = 1 (Linked Cel)
+			// 	WORD      Frame position to link with
+			WORD frame_link_position;
+			load_from_file(frame_link_position);
+			ASSERT(false, "");
+		} break;
+		
+		case CelChunk_CompressedImage: {
+			// 	+ For cel type = 2 (Compressed Image)
+			// 	WORD      Width in pixels
+			// 	WORD      Height in pixels
+			// 	PIXEL[]   "Raw Cel" data compressed with ZLIB method(see NOTE.3)
+			WORD width_in_pixels;
+			load_from_file(width_in_pixels);
+			WORD height_in_pixels;
+			load_from_file(height_in_pixels);
+			vector<BYTE> pixel_bytes;
+			// ZEXTERN int ZEXPORT uncompress(Bytef * dest, uLongf * destLen,
+			// 	const Bytef * source, uLong sourceLen);
+			// /*
+			// 	 Decompresses the source buffer into the destination buffer.  sourceLen is
+			//    the byte length of the source buffer.  Upon entry, destLen is the total size
+			//    of the destination buffer, which must be large enough to hold the entire
+			//    uncompressed data.  (The size of the uncompressed data must have been saved
+			//    previously by the compressor and transmitted to the decompressor by some
+			//    mechanism outside the scope of this compression library.) Upon exit, destLen
+			//    is the actual size of the uncompressed data.
+			// 
+			// 	 uncompress returns Z_OK if success, Z_MEM_ERROR if there was not
+			//    enough memory, Z_BUF_ERROR if there was not enough room in the output
+			//    buffer, or Z_DATA_ERROR if the input data was corrupted or incomplete.  In
+			//    the case where there is not enough room, uncompress() will fill the output
+			//    buffer with the uncompressed data up to that point.
+			// */
+			pixel_bytes.resize(width_in_pixels * height_in_pixels * bytes_per_pixel());
+			Bytef* dst = (Bytef*)pixel_bytes.data();
+			uLongf dst_len = (uLongf)pixel_bytes.size();
+			Bytef* src = m_file_data.data() + m_file_pointer;
+			auto read_so_far = m_file_pointer - start_pointer;
+			uLong src_len = (uLong)(chunk_size - read_so_far);
+			int res = uncompress(dst, &dst_len, src, src_len);
+			switch (res) {
+			case Z_OK:
+				break;
+			case Z_MEM_ERROR:
+				LOG_ERROR("there was not enough memory when uncompressing ase file {}", m_filename);
+				ASSERT(false, "");
+				break;
+			case Z_BUF_ERROR:
+				LOG_ERROR("there was not enough room in the output buffer when uncompressing ase file {}", m_filename);
+				ASSERT(false, "");
+				break;
+			case Z_DATA_ERROR:
+				LOG_ERROR("the input data was corrupted or incomplete when uncompressing ase file {}", m_filename);
+				break;
+			}
+		} break;
+		
+		case CelChunk_CompressedTilemap: {
+			// 	+ For cel type = 3 (Compressed Tilemap)
+			#pragma pack(1)
+			struct {
+				WORD      width_in_number_of_tiles; // Width in number of tiles
+				WORD      height_in_number_of_tiles; // Height in number of tiles
+				WORD      bits_per_tile; // Bits per tile(at the moment it's always 32-bit per tile)
+				DWORD     bitmask_for_tile_id; // Bitmask for tile ID(e.g. 0x1fffffff for 32 - bit tiles)
+				DWORD     bitmask_for_x_flip; // Bitmask for X flip
+				DWORD     bitmask_for_y_flip; // Bitmask for Y flip
+				DWORD     bitmask_for_90CW_rotation; // Bitmask for 90CW rotation
+				BYTE      reserved[10];
+			} compressed_tilemap;
+			load_from_file(compressed_tilemap);
+			//  TILE[]    Row by row, from top to bottom tile by tile
+			//			  compressed with ZLIB method(see NOTE.3)
+			// load_array_from_file<TILE>(??)
+			ASSERT(false, "");
+		} break;
+	}
 
 	auto end_pointer = m_file_pointer;
 	ASSERT((end_pointer - start_pointer) == chunk_size, "");

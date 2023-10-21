@@ -34,6 +34,7 @@ target_link_libraries(core
         spdlog::spdlog
         SDL2::SDL2
     PRIVATE
+        zlib
         Shlwapi.lib
 )
 
